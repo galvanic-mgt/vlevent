@@ -233,14 +233,29 @@ function normalizePrizeHeader(value) {
     .replace(/[.\-_/()（）[\]{}:：#＃\s]+/g, '');
 }
 
+const TRADITIONAL_PRIZE_HEADERS = [
+  '編號', '序號', '號碼', '獎品編號', '禮品編號', '贈品編號',
+  '名稱', '獎品', '獎品名稱', '禮品', '禮品名稱', '贈品', '贈品名稱',
+  '名額', '數量', '份數', '得獎名額', '中獎名額', '獎品數量', '禮品數量', '贈品數量'
+];
+
+function normalizePrizeHeaderSafe(value) {
+  return String(value || '')
+    .replace(/^\ufeff/, '')
+    .normalize('NFKC')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.\-_/()[\]{}:：，,]+/g, '');
+}
+
 function hasPrizeHeader(headers) {
-  const h = headers.map(normalizePrizeHeader);
+  const h = headers.map(normalizePrizeHeaderSafe);
   return h.some(x => [
     'no', 'number', 'id',
     'name', 'prize', 'prizename', 'gift', 'giftname',
     'quota', 'qty', 'quantity', 'count', 'amount',
     '獎品', '獎品名稱', '禮品', '禮品名稱', '禮物', '獎項', '數量', '名額', '份數'
-  ].includes(x));
+  ].includes(x) || TRADITIONAL_PRIZE_HEADERS.includes(x));
 }
 
 function scoreCSVText(text) {
@@ -281,9 +296,9 @@ function decodePrizeCSVBuffer(buffer) {
 }
 
 function mapPrizeHeaderRobust(headers, rows = []) {
-  const h = headers.map(normalizePrizeHeader);
+  const h = headers.map(normalizePrizeHeaderSafe);
   const find = (names) => {
-    const wanted = names.map(normalizePrizeHeader);
+    const wanted = names.map(normalizePrizeHeaderSafe);
     for (const name of wanted) {
       const exact = h.indexOf(name);
       if (exact !== -1) return exact;
@@ -297,15 +312,18 @@ function mapPrizeHeaderRobust(headers, rows = []) {
   const idx = {
     no: find([
       'no', 'number', 'item no', 'prize no', 'gift no',
+      '編號', '序號', '號碼', '獎品編號', '禮品編號', '贈品編號',
       '序號', '編號', '獎品編號', '禮品編號', '禮物編號'
     ]),
     id: find(['id', 'prize id', 'gift id']),
     name: find([
       'name', 'prize', 'prize name', 'gift', 'gift name', 'item', 'item name',
+      '名稱', '獎品', '獎品名稱', '禮品', '禮品名稱', '贈品', '贈品名稱',
       '獎品', '獎品名稱', '禮品', '禮品名稱', '禮物', '禮物名稱', '獎項', '獎項名稱'
     ]),
     quota: find([
       'quota', 'qty', 'quantity', 'count', 'amount', 'winner count', 'winners',
+      '名額', '數量', '份數', '得獎名額', '中獎名額', '獎品數量', '禮品數量', '贈品數量',
       '數量', '名額', '份數', '獎品數量', '禮品數量', '中獎名額'
     ])
   };
@@ -316,10 +334,19 @@ function mapPrizeHeaderRobust(headers, rows = []) {
 
   if (idx.quota === -1 && rows.length) {
     const firstDataRow = rows.find(r => r.some(v => String(v).trim())) || [];
-    idx.quota = firstDataRow.findIndex((v, i) => i !== idx.name && i !== idx.no && i !== idx.id && Number.isFinite(Number(v)));
+    idx.quota = firstDataRow.findIndex((v, i) => i !== idx.name && i !== idx.no && i !== idx.id && Number.isFinite(Number(String(v).normalize('NFKC').replace(/,/g, ''))));
   }
 
   return idx;
+}
+
+function parsePrizeQuota(value) {
+  const normal = String(value ?? '')
+    .normalize('NFKC')
+    .replace(/,/g, '')
+    .trim();
+  const match = normal.match(/\d+/);
+  return Math.max(0, Number(match ? match[0] : normal || 1)) || 1;
 }
 
 export async function importPrizesCSV(text) {
@@ -351,7 +378,7 @@ export async function importPrizesCSV(text) {
     if (!name) return null;
     const no    = String(pick(idx.no) || '').trim();
     const quotaRaw = pick(idx.quota);
-    const quota = Math.max(0, Number(quotaRaw || 1)) || 1;
+    const quota = parsePrizeQuota(quotaRaw);
     const id = String(pick(idx.id) || '').trim() || ('p' + Math.random().toString(36).slice(2, 8));
     return ensurePrizeShape({ id, no, name, quota, winners: [] });
   }).filter(Boolean);
