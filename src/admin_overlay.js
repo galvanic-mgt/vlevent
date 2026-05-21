@@ -1,0 +1,1 @@
+export function bindLoginOverlay(){const gate=document.getElementById('loginGate');const form=document.getElementById('loginForm');if(!gate||!form)return;gate.style.display='flex';form.addEventListener('submit',e=>{e.preventDefault();gate.style.display='none';});}

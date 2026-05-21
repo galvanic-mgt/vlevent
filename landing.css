@@ -1,0 +1,47 @@
+:root{
+  --lp-bg:#0b0f1a;--lp-card:#121a2b;--lp-muted:#90a4c0;--lp-accent:#3bd;--lp-success:#4cd964;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--lp-bg);color:#eef;font-family:Inter,system-ui,Arial}
+.lp-wrap{max-width:840px;margin:0 auto;padding:14px 16px}
+.lp-card{background:var(--lp-card);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:14px;margin:12px 0}
+.lp-hero{text-align:center}
+.lp-logo{max-width:180px;max-height:72px;display:block;margin:8px auto}
+.lp-muted{color:var(--lp-muted)}
+.lp-form .lp-field{display:flex;gap:10px;align-items:center;margin:8px 0}
+.lp-form .lp-field > span{min-width:64px;opacity:.9}
+.lp-primary{display:inline-block;padding:10px 14px;border-radius:12px;background:var(--lp-accent);color:#012;border:none;text-decoration:none;cursor:pointer}
+.lp-secondary{display:inline-block;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,.08);color:#eef;border:1px solid rgba(255,255,255,.18);text-decoration:none;cursor:pointer}
+.lp-link{text-align:center}
+.lp-msg{margin:8px 0}
+
+.lp-poll-options{display:flex;flex-direction:column;gap:10px;margin:8px 0}
+.lp-poll-opt{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid rgba(255,255,255,.12);border-radius:12px;cursor:pointer;background:rgba(255,255,255,.03)}
+.lp-poll-opt input{accent-color:var(--lp-accent)}
+.lp-poll-opt:hover{outline:2px solid rgba(59,221,255,.25)}
+
+.lp-result-bars{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.lp-bar{position:relative;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;overflow:hidden;height:42px}
+.lp-bar .fill{position:absolute;left:0;top:0;height:100%;width:0;transition:width .8s ease}
+.lp-bar .label{position:relative;z-index:2;padding:0 12px;line-height:42px;font-weight:700}
+.lp-bar .pct{position:absolute;right:10px;top:0;line-height:42px;opacity:.9}
+.lp-bar.crown::after{
+  content:"👑"; position:absolute; top:-10px; right:8px; font-size:28px;
+  transform:translateY(-12px) scale(.9);
+  animation:crown-drop .75s ease .2s both;
+}
+@keyframes crown-drop{0%{transform:translateY(-28px) scale(.6);opacity:.0}100%{transform:translateY(-12px) scale(1);opacity:1}}
+
+.lp-banner{width:100%;height:160px;background-size:cover;background-position:center;border-radius:12px;margin:0 auto 12px}
+.lp-game-booths{display:grid;gap:10px}
+.lp-booth-head{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.lp-booth-head h4{margin:0}
+.lp-booth-video{width:100%;max-height:52vh;background:#000;border-radius:12px;display:none}
+.lp-booth-video.is-active{display:block}
+.lp-booth-manual{display:flex;gap:8px;flex-wrap:wrap}
+.lp-booth-manual input{flex:1 1 240px;min-width:0;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:#0b0f1a;color:#eef}
+.lp-booth-status-list{display:grid;gap:8px}
+.lp-booth-status-row{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid rgba(255,255,255,.1);padding:8px 0}
+.lp-booth-status-row:last-child{border-bottom:0}
+.lp-booth-participated{color:#38d26b;font-weight:800}
+.lp-booth-not-participated{color:#ff5a67;font-weight:800}

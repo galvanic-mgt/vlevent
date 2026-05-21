@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>活動前登記 Pre-event Application</title>
+  <link rel="stylesheet" href="./pre_event_apply.css" />
+  <link rel="icon" href="data:," />
+</head>
+<body>
+  <main class="pe-shell">
+    <section class="pe-hero">
+      <img id="eventLogo" class="pe-logo" alt="" />
+      <p id="eventClient" class="pe-kicker"></p>
+      <h1 id="eventTitle">活動前登記<br><span class="pe-en">Pre-event Application</span></h1>
+      <p id="eventMeta" class="pe-muted"></p>
+    </section>
+
+    <section id="loginPanel" class="pe-panel">
+      <h2>登入<br><span class="pe-en">Login</span></h2>
+      <p class="pe-muted">請輸入員工證編號以查看或更改你的選擇。<br>Enter your staff ID to review or update your choices.</p>
+      <form id="loginForm" class="pe-form">
+        <label class="pe-field">
+          <span>員工證編號<br><span class="pe-en">Staff ID</span></span>
+          <input id="batchInput" autocomplete="off" required />
+        </label>
+        <button class="pe-primary" type="submit">繼續<br><span class="pe-en">Continue</span></button>
+      </form>
+      <p id="loginMessage" class="pe-message" role="status"></p>
+    </section>
+
+    <section id="applicationPanel" class="pe-panel" hidden>
+      <div class="pe-panel-head">
+        <div>
+          <p class="pe-kicker">已確認選擇<br><span class="pe-en">Confirmed choices</span></p>
+          <h2 id="guestName">嘉賓<br><span class="pe-en">Guest</span></h2>
+          <p id="guestInfo" class="pe-muted"></p>
+        </div>
+      </div>
+
+      <div id="lockNotice" class="pe-notice"></div>
+
+      <form id="applicationForm" class="pe-form">
+        <fieldset class="pe-choice">
+          <legend>出席<br><span class="pe-en">Attendance</span></legend>
+          <label><input type="radio" name="attending" value="yes" required /> 出席<br><span class="pe-en">Attend</span></label>
+          <label><input type="radio" name="attending" value="no" required /> 不出席<br><span class="pe-en">Not attending</span></label>
+        </fieldset>
+
+        <div id="choiceFields" class="pe-flow pe-collapsible">
+          <section id="transportStep" class="pe-step">
+            <label class="pe-field">
+              <span>交通方式<br><span class="pe-en">Transport</span></span>
+              <select id="transport" required></select>
+            </label>
+          </section>
+
+          <section id="shuttleFields" class="pe-step pe-shuttle pe-collapsible is-collapsed" aria-hidden="true">
+            <label class="pe-field">
+              <span>出發地點及時間<br><span class="pe-en">Pickup point and departure time</span></span>
+              <select id="pickupLocation"></select>
+            </label>
+            <label class="pe-field">
+              <span>回程地點及時間<br><span class="pe-en">Return point and return time</span></span>
+              <select id="returnLocation"></select>
+            </label>
+            <select id="goTime" class="pe-visually-hidden" tabindex="-1" aria-hidden="true"></select>
+            <select id="returnTime" class="pe-visually-hidden" tabindex="-1" aria-hidden="true"></select>
+          </section>
+
+          <section id="mealStep" class="pe-step">
+            <label class="pe-field">
+              <span>餐飲偏好<br><span class="pe-en">Meal preference</span></span>
+              <select id="meal" required></select>
+            </label>
+          </section>
+        </div>
+
+        <label class="pe-field">
+          <span>備註<br><span class="pe-en">Remarks</span></span>
+          <textarea id="remarks" rows="3"></textarea>
+        </label>
+
+        <button id="submitButton" class="pe-primary" type="submit">儲存選擇<br><span class="pe-en">Save choices</span></button>
+        <p id="formMessage" class="pe-message" role="status"></p>
+      </form>
+    </section>
+
+    <section id="detailPanel" class="pe-panel" hidden>
+      <p class="pe-kicker">最終安排<br><span class="pe-en">Final arrangement</span></p>
+      <h2>活動詳情<br><span class="pe-en">Event details</span></h2>
+      <div id="detailGrid" class="pe-summary"></div>
+    </section>
+  </main>
+
+  <script src="./src/pre_event_apply_config.js"></script>
+  <script src="./src/pre_event_apply.js"></script>
+</body>
+</html>

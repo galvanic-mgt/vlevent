@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pre-attendance Export</title>
+  <link rel="stylesheet" href="./pre_attendance_export.css" />
+  <link rel="icon" href="data:," />
+</head>
+<body>
+  <main class="px-shell">
+    <header class="px-header">
+      <div>
+        <p class="px-kicker">Separate export tool</p>
+        <h1>Pre-attendance replies</h1>
+        <p class="px-muted">This page is separate from the CMS. It only reads pre-attendance replies and exports them.</p>
+      </div>
+      <a id="customerPageLink" class="px-link" href="./pre_attendance.html">Customer page</a>
+    </header>
+
+    <section class="px-panel">
+      <div class="px-controls">
+        <label>
+          Event ID
+          <input id="eventIdInput" placeholder="emit2k560" />
+        </label>
+        <button id="loadReplies" type="button">Load replies</button>
+        <button id="exportReplies" type="button">Export Excel CSV</button>
+        <span id="replyCount" class="px-count">0 replies</span>
+      </div>
+
+      <p id="statusMessage" class="px-status" role="status"></p>
+
+      <div class="px-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Submitted</th>
+              <th>Name</th>
+              <th>Company / Dept</th>
+              <th>Phone</th>
+              <th>Email</th>
+              <th>Attend</th>
+              <th>Transportation</th>
+              <th>Go time</th>
+              <th>Pickup</th>
+              <th>Return time</th>
+              <th>Return location</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="replyRows">
+            <tr><td colspan="12">Load an event to view replies.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="./src/pre_attendance_export.js"></script>
+</body>
+</html>

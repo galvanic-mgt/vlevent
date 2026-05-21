@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Event Entrance</title>
+  <link rel="stylesheet" href="./pre_event_apply.css" />
+  <link rel="icon" href="data:," />
+</head>
+<body>
+  <main class="pe-shell">
+    <section class="pe-hero">
+      <img id="eventLogo" class="pe-logo" alt="" />
+      <p id="eventClient" class="pe-kicker"></p>
+      <h1 id="eventTitle">Event Entrance</h1>
+      <p id="eventMeta" class="pe-muted"></p>
+    </section>
+
+    <section id="loginPanel" class="pe-panel">
+      <h2>Guest lookup</h2>
+      <form id="loginForm" class="pe-form">
+        <label class="pe-field">
+          <span>Batch number</span>
+          <input id="batchInput" autocomplete="off" required />
+        </label>
+        <button class="pe-primary" type="submit">Open entrance page</button>
+      </form>
+      <p id="loginMessage" class="pe-message" role="status"></p>
+    </section>
+
+    <section id="entrancePanel" class="pe-panel" hidden>
+      <div class="pe-panel-head">
+        <div>
+          <p class="pe-kicker">Entrance page</p>
+          <h2 id="guestName">Guest</h2>
+          <p id="guestInfo" class="pe-muted"></p>
+        </div>
+        <button id="switchButton" class="pe-secondary" type="button">Switch guest</button>
+      </div>
+      <div id="entranceGrid" class="pe-summary"></div>
+    </section>
+  </main>
+
+  <script src="./src/pre_event_apply_config.js"></script>
+  <script src="./src/event_entrance.js"></script>
+</body>
+</html>

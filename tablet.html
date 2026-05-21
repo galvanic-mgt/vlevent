@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="zh-HK">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tablet 抽獎</title>
+  <link rel="stylesheet" href="./styles.css">
+  <!-- Copy public view styling so frame/multiply/percent heights match -->
+  <style>
+    html, body { height: 100%; margin: 0; background: #0b0d12; }
+    body.is-public { position: relative; overflow: hidden; }
+    #publicBg { position:fixed; inset:0; z-index:0; background:#0b0d12; background-size:cover; background-position:center; filter:brightness(.85); }
+    #publicRoot { position: relative; z-index: 1; }
+    .is-public #cmsStage16x9 { background: transparent; box-shadow: none; width: 100vw; height: 100vh; display:flex; flex-direction:column; gap:32px; padding:24px 32px; box-sizing:border-box; justify-content:center; }
+    .is-public .card, .is-public .subpage, .is-public .wrap, .is-public .container { width: auto; max-width: none; margin: 0; padding: 0; }
+    .is-public .stage-row { width: 100%; margin: 0; }
+    .is-public .current-prize{ font-size: clamp(24px, 3vw, 100px); white-space: normal; word-break: break-word; line-height: 1.1; }
+    .is-public #prizeLeftInline.stat{ font-size: clamp(18px, 1vw, 32px); padding: 10px 16px; white-space: normal; word-break: break-word; }
+    .is-public .prize-strip { flex: 0 0 auto !important; height: auto; padding: 0; margin: 0; }
+    .is-public .prize-strip .bar { padding: 4px 24px !important; height: auto; }
+    .is-public .prize-strip .spacer { flex: 0 0 auto !important; height: 0 !important; }
+    #btnRollMain, #btnRollInstant, #btnClearScreen {
+      font-size: clamp(18px, 2.2vw, 30px);
+      padding: 14px 22px;
+      line-height: 1.2;
+    }
+  .is-public #stageLogo {
+    width: clamp(18vw, 20vw, 28vw);
+    aspect-ratio: 1 / 1;
+    height: 100%;
+    max-height: none;
+    background-size: contain !important;
+    background-repeat: no-repeat;
+    background-position: center;
+    margin: 0;
+    display: grid;
+    place-items: center;
+    place-self: center;
+    overflow: hidden;
+    position: relative;
+    object-fit: contain;
+  }
+  .is-public #stageBanner {
+    height: 100%;
+    max-height: none;
+    width: 100%;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center;
+    border-radius: 0px;
+    display: grid;
+    place-items: center;
+    justify-self: stretch;
+    align-self: center;
+    overflow: hidden;
+    position: relative;
+  }
+    .is-public .header { position: relative; display: grid; grid-template-columns: auto 1fr; gap: 20px; padding: 16px 20px; border-radius: 18px; border: 1px solid rgba(255,255,255,.14); overflow: hidden; align-items: center; min-height: clamp(120px, 16vh, 220px); }
+    .is-public .header::after { content: ""; position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5); mix-blend-mode: multiply; pointer-events: none; }
+    .is-public .header > * { position: relative; z-index: 1; }
+    .is-public .winners-area.stage-main { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+    .is-public #stageGrid { flex: 1 1 auto; min-height: 0; justify-items: center; align-items: start; justify-content: center; }
+    .is-public #stageCountdown { margin-top: 8px; flex: 0 0 auto; }
+    .is-public #stageGrid .winner-card { width: 100%; height: auto; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; }
+    .is-public #stageGrid.winners-1 { grid-template-columns: repeat(1, 1fr) !important; }
+    .is-public #stageGrid.winners-2 { grid-template-columns: repeat(2, 1fr) !important; }
+    .is-public #stageGrid.winners-3 { grid-template-columns: repeat(3, 1fr) !important; }
+    .is-public #stageGrid.winners-4 { grid-template-columns: repeat(4, 1fr) !important; }
+    .is-public #stageGrid.winners-5 { grid-template-columns: repeat(5, 1fr) !important; }
+    .is-public #stageGrid.winners-6 { grid-template-columns: repeat(3, 1fr) !important; }
+    .is-public #stageGrid.winners-7 { grid-template-columns: repeat(4, 1fr) !important; }
+    .is-public #stageGrid.winners-8 { grid-template-columns: repeat(4, 1fr) !important; }
+    .is-public #stageGrid.winners-9 { grid-template-columns: repeat(5, 1fr) !important; }
+    .is-public #stageGrid.winners-10{ grid-template-columns: repeat(5, 1fr) !important; }
+    .is-public #stageGrid.winners-7 .winner-card:nth-child(5) { grid-column: 1; }
+    .is-public #stageGrid.winners-7 .winner-card:nth-child(6) { grid-column: 2; }
+    .is-public #stageGrid.winners-7 .winner-card:nth-child(7) { grid-column: 3; }
+    .is-public #stageGrid.winners-9 .winner-card:nth-child(6) { grid-column: 1; }
+    .is-public #stageGrid.winners-9 .winner-card:nth-child(7) { grid-column: 2; }
+    .is-public #stageGrid.winners-9 .winner-card:nth-child(8) { grid-column: 3; }
+    .is-public #stageGrid.winners-9 .winner-card:nth-child(9) { grid-column: 4; }
+  </style>
+</head>
+<body class="is-public">
+  <div id="publicBg"></div>
+  <div id="publicRoot">
+    <main class="container">
+      <div class="bar" style="gap:12px;flex-wrap:wrap;justify-content:center;align-items:center;margin-bottom:16px">
+        <label class="bar" style="gap:6px;align-items:center">
+          抽獎項目
+          <select id="tabletPrizeSelect" class="input" style="min-width:200px"></select>
+        </label>
+        <div id="drawBtns" class="btns">
+          批次：
+          <button class="btn small" data-batch="1">1</button>
+          <button class="btn small" data-batch="2">2</button>
+          <button class="btn small" data-batch="3">3</button>
+          <button class="btn small" data-batch="4">4</button>
+          <button class="btn small" data-batch="5">5</button>
+          <button class="btn small" data-batch="6">6</button>
+          <button class="btn small" data-batch="7">7</button>
+          <button class="btn small" data-batch="8">8</button>
+          <button class="btn small" data-batch="9">9</button>
+          <button class="btn small" data-batch="10">10</button>
+        </div>
+        <button id="btnRollMain" class="btn" style="background:#e53935;color:#fff">開始抽獎</button>
+        <button id="btnRollInstant" class="btn" style="background:#8bc34a;color:#000">即時抽獎</button>
+        <button id="btnClearScreen" class="btn" style="background:#ffd84d;color:#000">清空畫面</button>
+      </div>
+
+      <!-- Stage area (same elements as public board) -->
+      <div id="cmsStage16x9" class="cms-stage">
+        <div class="stage-row header">
+          <div id="stageLogo" class="logo-box">LOGO</div>
+          <div id="stageBanner" class="banner-box">Banner space</div>
+        </div>
+
+        <div class="stage-row prize-strip">
+          <div class="spacer"></div>
+          <div class="bar">
+            <div id="stageCurrentPrize" class="stat current-prize">
+              <span class="prize-label">現正抽獎：</span>
+              <span class="prize-name" id="stagePrizeName">—</span>
+            </div>
+            <div id="prizeLeftInline" class="stat">
+              此獎尚餘：<span id="stagePrizeLeft">—</span>
+            </div>
+          </div>
+          <div class="spacer"></div>
+        </div>
+
+        <div class="stage-row winners-area stage-main">
+          <div id="stageGrid"></div>
+          <div id="stageCountdown"></div>
+        </div>
+
+        <div class="stage-row footer-stats">
+          <div id="totalLeft" class="stat">出席並未得獎尚餘：<span id="stageTotalLeft">—</span></div>
+          <div id="totalWon" class="stat">已得獎：<span id="stageTotalWon">—</span></div>
+        </div>
+      </div>
+     
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+  <script type="module">
+    import { setCurrentEventId, getPrizes, getCurrentPrizeIdRemote } from './src/core_firebase.js';
+    import { performDraw, clearScreenResults } from './src/stage_draw_logic.js';
+    import { renderStageDraw } from './src/stage_draw_ui.js';
+    import { renderBatchGrid as renderBatchGridCore, fitWinnerCardText } from './src/stage_draw_logic.js';
+    import { setCurrentPrize } from './src/stage_prizes_firebase.js';
+    import { FB } from './src/fb.js';
+
+    const u = new URL(location.href);
+    const eid = u.searchParams.get('event');
+    if (eid) setCurrentEventId(eid);
+
+    // render public-style stage (assets handled by public_stage_boot)
+    renderStageDraw('public');
+
+    const overlayEl = document.getElementById('stageCountdown');
+    const gridEl    = document.getElementById('stageGrid');
+
+    const fitOpts = { nameMax: 160, deptMax: 90 };
+
+    // prize dropdown
+    async function populatePrizeSelect(){
+      const sel = document.getElementById('tabletPrizeSelect');
+      if (!sel || !eid) return;
+      const [prizes, curId] = await Promise.all([
+        getPrizes(eid).catch(()=>[]),
+        getCurrentPrizeIdRemote(eid).catch(()=>null)
+      ]);
+      sel.innerHTML = '';
+      (prizes || []).forEach(p=>{
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.no ? `${p.no} — ${p.name||''}` : (p.name||'');
+        if (p.id === curId) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      if (!sel.value && prizes[0]) sel.value = prizes[0].id;
+    }
+    document.getElementById('tabletPrizeSelect')?.addEventListener('change', async (e)=>{
+      const pid = e.target.value;
+      if (!pid) return;
+      try { await setCurrentPrize(pid); } catch(_){}
+    });
+
+    // batch buttons toggle active state
+    document.querySelectorAll('#drawBtns [data-batch]')?.forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        document.querySelectorAll('#drawBtns [data-batch]').forEach(x=>x.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+
+    const getBatch = ()=>{
+      const active = document.querySelector('#drawBtns [data-batch].active');
+      return active ? Number(active.getAttribute('data-batch')) : 1;
+    };
+
+    document.getElementById('btnRollMain')?.addEventListener('click', async ()=>{
+      const n = getBatch();
+      await performDraw(n, {
+        overlayEl,
+        gridEl,
+        afterRender: batch => {
+          renderBatchGridCore(gridEl, batch, 'tablet');
+          fitWinnerCardText(gridEl, fitOpts);
+        }
+      });
+      await populatePrizeSelect();
+    });
+
+    document.getElementById('btnRollInstant')?.addEventListener('click', async ()=>{
+      const n = getBatch();
+      await performDraw(n, {
+        overlayEl,
+        gridEl,
+        skipCountdown: true,
+        afterRender: batch => {
+          renderBatchGridCore(gridEl, batch, 'tablet');
+          fitWinnerCardText(gridEl, fitOpts);
+        }
+      });
+      await populatePrizeSelect();
+    });
+
+    document.getElementById('btnClearScreen')?.addEventListener('click', async ()=>{
+      await clearScreenResults(gridEl);
+    });
+
+    await populatePrizeSelect();
+
+    async function syncStageState(){
+      try{
+        if (!eid) return;
+        const state = await FB.get(`/events/${eid}/ui/stageState`).catch(()=>null);
+        if (!state || !state.winners) return;
+        const winnersArray = Array.isArray(state.winners) ? state.winners : Object.values(state.winners);
+        renderBatchGridCore(document.getElementById('stageGrid'), winnersArray, 'tablet');
+        fitWinnerCardText(document.getElementById('stageGrid'), fitOpts);
+      }catch(_){}
+    }
+
+    // initial sync + poll stageState to stay in sync (use tablet mode to keep reroll buttons)
+    await syncStageState();
+    setInterval(syncStageState, 1000);
+  </script>
+  <script type="module" src="./src/public_stage_boot.js"></script>
+</body>
+</html>

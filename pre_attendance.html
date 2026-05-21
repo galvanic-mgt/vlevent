@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover" />
+  <title>Attendance Reply</title>
+  <link rel="stylesheet" href="./pre_attendance.css" />
+  <link rel="icon" href="data:," />
+</head>
+<body>
+  <main class="pa-shell">
+    <section class="pa-hero">
+      <img id="eventLogo" class="pa-logo" alt="" />
+      <p id="eventClient" class="pa-kicker"></p>
+      <h1 id="pageTitle">Attendance Reply</h1>
+      <p id="pageIntro" class="pa-intro"></p>
+      <div class="pa-event">
+        <strong id="eventTitle"></strong>
+        <span id="eventDateTime"></span>
+        <span id="eventVenue"></span>
+      </div>
+    </section>
+
+    <section class="pa-panel">
+      <form id="preAttendanceForm" class="pa-form">
+        <div class="pa-grid">
+          <label class="pa-field">
+            <span id="labelName">Full name</span>
+            <input id="guestName" name="guestName" autocomplete="name" required />
+          </label>
+          <label class="pa-field">
+            <span id="labelCompany">Company / Department</span>
+            <input id="guestCompany" name="guestCompany" autocomplete="organization" />
+          </label>
+          <label class="pa-field">
+            <span id="labelPhone">Phone</span>
+            <input id="guestPhone" name="guestPhone" autocomplete="tel" inputmode="tel" required />
+          </label>
+          <label class="pa-field">
+            <span id="labelEmail">Email</span>
+            <input id="guestEmail" name="guestEmail" autocomplete="email" inputmode="email" />
+          </label>
+        </div>
+
+        <fieldset class="pa-choice">
+          <legend id="attendanceLegend">Will you attend?</legend>
+          <div id="attendanceOptions" class="pa-radio-row"></div>
+        </fieldset>
+
+        <section id="tripSection" class="pa-trip">
+          <div class="pa-grid">
+            <label class="pa-field">
+              <span id="labelTransportation">Transportation</span>
+              <select id="transportation" name="transportation"></select>
+            </label>
+            <label class="pa-field">
+              <span id="labelGoTime">Go time</span>
+              <select id="goTime" name="goTime"></select>
+            </label>
+            <label class="pa-field">
+              <span id="labelPickup">Pickup location</span>
+              <select id="pickupLocation" name="pickupLocation"></select>
+            </label>
+            <label class="pa-field">
+              <span id="labelReturnTime">Return time</span>
+              <select id="returnTime" name="returnTime"></select>
+            </label>
+            <label class="pa-field">
+              <span id="labelReturnLocation">Return location</span>
+              <select id="returnLocation" name="returnLocation"></select>
+            </label>
+          </div>
+        </section>
+
+        <label class="pa-field">
+          <span id="labelNotes">Notes</span>
+          <textarea id="notes" name="notes" rows="3"></textarea>
+        </label>
+
+        <button id="submitButton" class="pa-submit" type="submit">Submit reply</button>
+        <p id="formMessage" class="pa-message" role="status"></p>
+      </form>
+    </section>
+  </main>
+
+  <script src="./src/pre_attendance_config.js"></script>
+  <script src="./src/pre_attendance.js"></script>
+</body>
+</html>

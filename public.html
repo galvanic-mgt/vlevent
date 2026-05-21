@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="zh-HK">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>公眾畫面 · 舞台抽獎</title>
+
+  <!-- ✅ Use the same stylesheet as CMS -->
+  <link rel="stylesheet" href="./styles.css">
+
+<style>
+  /* Full-viewport centering for public view */
+  html, body { height: 100%; margin: 0; background: #0b0d12; }
+  body.is-public { position: relative; overflow: hidden; }
+  #publicBg { z-index: 0; }
+  #publicRoot { position: relative; z-index: 1; }
+
+  /* Let the background show through on public board */
+  .is-public #cmsStage16x9 {
+    background: transparent;
+    box-shadow: none;
+  }
+
+  /* Isolation wrapper: center content, ignore CMS page layout */
+  .is-public #publicRoot {
+    position: fixed; inset: 0;
+    display: grid; place-items: center;
+    padding: 0; margin: 0;
+  }
+
+  /* Make the stage fill the screen proportionally */
+  .is-public #cmsStage16x9 {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;   /* stack from the top, no big gaps */
+    align-items: stretch;
+    box-sizing: border-box;
+    padding: 16px 32px;
+    gap: 48px;                     /* controlled space between rows */
+  }
+
+
+  /* Nuke typical CMS layout constraints that cause left-hug */
+  .is-public .card,
+  .is-public .subpage,
+  .is-public .wrap,
+  .is-public .container {
+    width: auto; max-width: none; margin: 0; padding: 0;
+  }
+
+  /* Ensure rows expand to full width under any inherited rules */
+  .is-public .stage-row { width: 100%; margin: 0; }
+
+/* Make 現正抽獎 bigger on public board */
+.is-public .current-prize{
+  font-size: clamp(24px, 3vw, 100px);
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.1;
+  
+}
+
+/* Optionally also bump the 此獎尚餘 pill a bit */
+.is-public #prizeLeftInline.stat{
+  font-size: clamp(18px, 1vw, 32px);
+  padding: 10px 16px;
+  white-space: normal;
+  word-break: break-word;
+}
+/* PUBLIC VIEW: compress the 現正抽獎 row */
+.is-public .prize-strip {
+    flex: 0 0 auto !important;       /* do NOT stretch vertically */
+    height: auto;
+    padding: 0;
+    margin: 0;
+}
+
+/* reduce vertical padding inside the bar */
+.is-public .prize-strip .bar {
+    padding: 4px 24px !important;    /* was like 12px–20px */
+    height: auto;
+}
+
+/* remove the giant top/bottom spacers */
+.is-public .prize-strip .spacer {
+    flex: 0 0 auto !important; 
+    height: 0 !important;            /* stops them from pushing content down */
+}
+/* PUBLIC VIEW — Logo */
+.is-public #stageLogo {
+    width: clamp(220px, 20vw, 340px);
+    height: 100%;
+    max-height: none;
+    background-size: contain !important;
+    background-repeat: no-repeat;
+    background-position: center;
+    margin: 0;
+    display: grid;
+    place-items: center;
+    place-self: center;
+    overflow: hidden;           /* keep it inside rounded corners */
+    position: relative;
+}
+
+/* PUBLIC VIEW — Banner */
+.is-public #stageBanner {
+    height: 100%;
+    max-height: none;
+    width: 100%;          /* let it hog the right side */
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    border-radius: 0px;
+    background-size: contain;   /* ⬅️ key line */
+    display: grid;
+    place-items: center;
+    justify-self: stretch;
+    align-self: center;
+    overflow: hidden;           /* keep it inside rounded corners */
+    position: relative;
+}
+
+/* Frame both logo + banner with one dark multiply overlay (two sections inside) */
+.is-public .header {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr; /* let banner hog the right side */
+  gap: 20px;
+  padding: 16px 20px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.14);
+  overflow: hidden;
+  align-items: center;
+  min-height: clamp(120px, 16vh, 220px);
+}
+.is-public .header::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5); /* single dark multiply across both sections */
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+.is-public .header > * { position: relative; z-index: 1; }
+
+/* Override default header grid to ensure banner stretches the right side */
+.is-public .stage-row.header {
+  grid-template-columns: auto 1fr !important;
+  align-items: center;
+}
+.is-public .stage-row.header #stageBanner {
+  justify-self: stretch;
+  align-self: center;
+  display: block;              /* override grid centering from .banner-box */
+  background-size: cover;      /* fill its area */
+  background-position: center; /* keep nice crop */
+}
+
+/* Public header row container (optional tidy-up) */
+.is-public .header-row {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+
+.is-public .winners-area.stage-main {
+  flex: 1 1 auto;          /* ⬅️ grow to fill leftover space */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;           /* important for flex children to be able to shrink */
+}
+/* PUBLIC: make the winners grid fill the winners area */
+/* PUBLIC: let styles.css control layout; only flex-size the container */
+.is-public #stageGrid {
+  flex: 1 1 auto;
+  min-height: 0;
+  justify-items: center;
+  align-items: start;
+  justify-content: center;
+}
+
+
+/* keep countdown below the grid */
+.is-public #stageCountdown {
+  margin-top: 8px;
+  flex: 0 0 auto;
+}
+
+/* PUBLIC: center winner cards and text for 1–10 draws */
+.is-public #stageGrid .winner-card {
+  width: 100%;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+/* PUBLIC: explicit balanced columns per count */
+.is-public #stageGrid.winners-1 { grid-template-columns: repeat(1, 1fr) !important; }
+.is-public #stageGrid.winners-2 { grid-template-columns: repeat(2, 1fr) !important; }
+.is-public #stageGrid.winners-3 { grid-template-columns: repeat(3, 1fr) !important; }
+.is-public #stageGrid.winners-4 { grid-template-columns: repeat(4, 1fr) !important; }
+.is-public #stageGrid.winners-5 { grid-template-columns: repeat(5, 1fr) !important; }
+.is-public #stageGrid.winners-6 { grid-template-columns: repeat(3, 1fr) !important; }
+.is-public #stageGrid.winners-7 { grid-template-columns: repeat(4, 1fr) !important; }
+.is-public #stageGrid.winners-8 { grid-template-columns: repeat(4, 1fr) !important; }
+.is-public #stageGrid.winners-9 { grid-template-columns: repeat(5, 1fr) !important; }
+.is-public #stageGrid.winners-10{ grid-template-columns: repeat(5, 1fr) !important; }
+
+/* PUBLIC: center last row for 7 (4+3) and 9 (5+4) draws */
+.is-public #stageGrid.winners-7 .winner-card:nth-child(5) { grid-column: 1; }
+.is-public #stageGrid.winners-7 .winner-card:nth-child(6) { grid-column: 2; }
+.is-public #stageGrid.winners-7 .winner-card:nth-child(7) { grid-column: 3; }
+
+.is-public #stageGrid.winners-9 .winner-card:nth-child(6) { grid-column: 1; }
+.is-public #stageGrid.winners-9 .winner-card:nth-child(7) { grid-column: 2; }
+.is-public #stageGrid.winners-9 .winner-card:nth-child(8) { grid-column: 3; }
+.is-public #stageGrid.winners-9 .winner-card:nth-child(9) { grid-column: 4; }
+
+/* PUBLIC: poll QR in grid area (replaces cards) */
+  .qr-panel {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    box-sizing: border-box;
+  }
+  .qr-box-inline {
+    background: rgba(0,0,0,.35);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 18px;
+    padding: 18px;
+    display: grid;
+    gap: 10px;
+    justify-items: center;
+    color: #fff;
+    max-width: 92vw;   /* percentage-based sizing */
+    max-height: 90vh;
+    width: 100%;
+    height: auto;
+    justify-self: center;
+  }
+  .qr-title {
+  font-size: clamp(24px, 3vw, 44px);
+  font-weight: 800;
+  text-align: center;
+}
+.qr-title span {
+  color: #ffd84d;
+}
+.qr-link {
+  word-break: break-all;
+  font-size: 12px;
+  opacity: .8;
+  text-align: center;
+}
+
+/* When showing poll QR, hide only the countdown; keep header/prize strip visible */
+.qr-mode #stageCountdown {
+  display: none !important;
+}
+.qr-mode .current-prize,
+.qr-mode #prizeLeftInline,
+.qr-mode .stage-row.prize-strip,
+.qr-mode .stage-row.footer-stats {
+  display: none !important;
+}
+
+/* Poll results mode (bar chart in grid) */
+.results-mode #stageCountdown {
+  display: none !important;
+}
+.results-mode .current-prize,
+.results-mode #prizeLeftInline,
+.results-mode .stage-row.prize-strip,
+.results-mode .stage-row.footer-stats {
+  display: none !important;
+}
+.results-chart {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  box-sizing: border-box;
+}
+.results-inner {
+  width: 100%;
+  max-width: 92vw;
+  max-height: 90vh;
+  display: grid;
+  gap: 14px;
+}
+.results-title {
+  text-align: center;
+  font-size: clamp(28px, 4vw, 56px);
+  font-weight: 800;
+}
+.results-bars {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 14px;
+  align-items: end;
+  min-height: 40vh;
+}
+.rBar {
+  position: relative;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(0,0,0,.2);
+  display: grid;
+  gap: 8px;
+  align-items: end;
+  min-height: 30vh;
+}
+.rFillWrap { width: 100%; height: 220px; display:flex; align-items:flex-end; }
+.rFill {
+  width: 100%;
+  height: 0;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255,216,77,.5), rgba(255,139,95,.8));
+  transition: height .8s ease;
+}
+.rLabel { text-align:center; font-weight:700; min-height:32px; white-space:normal; word-break:break-word; }
+.rCount { text-align:center; font-size:14px; opacity:.9; }
+
+/* Ensure QR/results layout use full width and center */
+.is-public .winners-grid {
+  width: 100% !important;
+  max-width: 100% !important;
+  justify-content: center;
+  align-content: center;
+}
+.is-public #stageGrid .qr-panel {
+  width: 100%;
+  height: 100%;
+}
+.qr-mode #stageGrid,
+.results-mode #stageGrid {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+.crown { position:absolute; top:-30px; left:50%; transform:translateX(-50%); font-size:84px; opacity:0; transition:opacity .4s ease; }
+.results-status { text-align:center; font-size:14px; opacity:.8; }
+
+
+</style>
+
+</head>
+<body class="is-public">
+  <div id="publicRoot">
+    
+    <div id="cmsStage16x9" class="cms-stage">
+      <div class="stage-row header">
+        <div id="stageLogo" class="logo-box">LOGO</div>
+        <div id="stageBanner" class="banner-box">Banner space</div>
+      </div>
+
+      <div class="stage-row prize-strip">
+        <div class="spacer"></div>
+        <div class="bar">
+          <div id="stageCurrentPrize" class="stat current-prize">
+            <span class="prize-label">現正抽獎：</span>
+            <span class="prize-name" id="stagePrizeName">—</span>
+          </div>
+          <div id="prizeLeftInline" class="stat">
+            此獎尚餘：<span id="stagePrizeLeft">—</span>
+          </div>
+        </div>
+        <div class="spacer"></div>
+      </div>
+
+      <div class="stage-row winners-area stage-main">
+        <div id="stageGrid"></div>
+        <div id="stageCountdown"></div>
+      </div>
+      
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+
+  <!-- These must come *before* our boot script so renderStageDraw exists -->
+  <script type="module" src="./src/core_firebase.js"></script>
+  <script type="module" src="./src/stage_prizes_firebase.js"></script>
+  <script src="./qrcode.min.js"></script>
+
+  <!-- ✅ Then our boot script that calls renderStageDraw() -->
+  <script type="module" src="./src/public_stage_boot.js"></script>
+  <script type="module" src="./src/public_stage_state.js"></script>
+
+</body>
+</html>

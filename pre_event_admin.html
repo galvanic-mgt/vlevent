@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>活動前登記及安排更新 Pre-event Registration and Arrangement Update</title>
+  <link rel="stylesheet" href="./pre_event_apply.css" />
+  <link rel="icon" href="data:," />
+</head>
+<body>
+  <main class="pe-shell">
+    <section class="pe-hero">
+      <p class="pe-kicker">製作資料交接<br><span class="pe-en">Production details handover</span></p>
+      <h1>活動前登記及安排更新<br><span class="pe-en">Pre-event Registration and Arrangement Update</span></h1>
+      <p class="pe-muted">匯出嘉賓登記資料，再匯入製作方整理好的台號、座位及交通安排。<br>Export guest registration data, then import the table, seat and transport details prepared by production.</p>
+    </section>
+
+    <section class="pe-panel">
+      <div class="pe-grid">
+        <label class="pe-field">
+          <span>活動 ID<br><span class="pe-en">Event ID</span></span>
+          <input id="eventIdInput" placeholder="e..." />
+        </label>
+        <label class="pe-field">
+          <span>安排資料 CSV<br><span class="pe-en">Arrangement CSV</span></span>
+          <input id="backfillFile" type="file" accept=".csv" />
+        </label>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+        <button id="loadButton" class="pe-secondary" type="button">載入登記<br><span class="pe-en">Load applications</span></button>
+        <button id="exportButton" class="pe-primary" type="button">匯出 CSV<br><span class="pe-en">Export CSV</span></button>
+        <button id="importButton" class="pe-secondary" type="button">匯入安排 CSV<br><span class="pe-en">Import arrangement CSV</span></button>
+      </div>
+      <p id="statusMessage" class="pe-message" role="status"></p>
+    </section>
+
+    <section class="pe-panel">
+      <h2>活動前設定<br><span class="pe-en">Pre-event settings</span></h2>
+      <div class="pe-grid" style="margin-top:12px">
+        <label class="pe-field">
+          <span>報名截止時間<br><span class="pe-en">Application deadline</span></span>
+          <input id="registrationDeadline" type="datetime-local" />
+        </label>
+        <label class="pe-field">
+          <span>開放查詢時間<br><span class="pe-en">Reveal from</span></span>
+          <input id="revealFrom" type="datetime-local" />
+        </label>
+        <label class="pe-field">
+          <span>活動前多少日開放查詢<br><span class="pe-en">Reveal days before event</span></span>
+          <input id="revealDaysBeforeEvent" type="number" min="3" max="7" value="7" />
+        </label>
+      </div>
+      <button id="saveSettingsButton" class="pe-primary" type="button" style="margin-top:16px">儲存設定<br><span class="pe-en">Save settings</span></button>
+    </section>
+
+    <section class="pe-panel">
+      <h2>登記資料<br><span class="pe-en">Applications</span></h2>
+      <div style="overflow:auto;margin-top:12px">
+        <table id="applicationTable" style="width:100%;border-collapse:collapse">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="./src/pre_event_apply_config.js"></script>
+  <script src="./src/pre_event_admin.js"></script>
+</body>
+</html>
