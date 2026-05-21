@@ -141,8 +141,23 @@ export async function setCurrentPrize(prizeId) {
 
 /* ----------------- CSV import ----------------- */
 
-// very simple CSV split with quotes support
-function splitCSVLine(line) {
+function detectDelimiter(text) {
+  const firstLine = String(text).split(/\r?\n/).find(l => l.trim()) || '';
+  const candidates = [',', '\t', ';'];
+  let best = ',';
+  let bestCount = -1;
+  for (const delimiter of candidates) {
+    const count = splitCSVLine(firstLine, delimiter).length;
+    if (count > bestCount) {
+      best = delimiter;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+// CSV split with quote support. Kept local so prize import works without extra deps.
+function splitCSVLine(line, delimiter = ',') {
   const out = [];
   let cur = '';
   let inQ = false;
@@ -158,7 +173,7 @@ function splitCSVLine(line) {
       }
       continue;
     }
-    if (c === ',' && !inQ) {
+    if (c === delimiter && !inQ) {
       out.push(cur);
       cur = '';
       continue;
@@ -166,38 +181,171 @@ function splitCSVLine(line) {
     cur += c;
   }
   out.push(cur);
-  return out.map(s => s.trim());
+  return out.map(s => s.replace(/^\ufeff/, '').trim());
 }
 
-function mapPrizeHeader(headers) {
-  const h = headers.map(x => x.trim().toLowerCase());
+function parseCSVRows(text) {
+  const delimiter = detectDelimiter(text);
+  const rows = [];
+  let cur = '';
+  let row = [];
+  let inQ = false;
+  const src = String(text || '').replace(/^\ufeff/, '');
+
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    const n = src[i + 1];
+    if (c === '"') {
+      if (inQ && n === '"') {
+        cur += '"';
+        i++;
+      } else {
+        inQ = !inQ;
+      }
+      continue;
+    }
+    if (c === delimiter && !inQ) {
+      row.push(cur.trim());
+      cur = '';
+      continue;
+    }
+    if ((c === '\n' || c === '\r') && !inQ) {
+      if (c === '\r' && n === '\n') i++;
+      row.push(cur.trim());
+      if (row.some(v => String(v).trim())) rows.push(row);
+      row = [];
+      cur = '';
+      continue;
+    }
+    cur += c;
+  }
+
+  row.push(cur.trim());
+  if (row.some(v => String(v).trim())) rows.push(row);
+  return rows;
+}
+
+function normalizePrizeHeader(value) {
+  return String(value || '')
+    .replace(/^\ufeff/, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[.\-_/()（）[\]{}:：#＃\s]+/g, '');
+}
+
+function hasPrizeHeader(headers) {
+  const h = headers.map(normalizePrizeHeader);
+  return h.some(x => [
+    'no', 'number', 'id',
+    'name', 'prize', 'prizename', 'gift', 'giftname',
+    'quota', 'qty', 'quantity', 'count', 'amount',
+    '獎品', '獎品名稱', '禮品', '禮品名稱', '禮物', '獎項', '數量', '名額', '份數'
+  ].includes(x));
+}
+
+function scoreCSVText(text) {
+  const replacementChars = (String(text).match(/\ufffd/g) || []).length;
+  const rows = parseCSVRows(text);
+  const headerScore = rows[0] && hasPrizeHeader(rows[0]) ? 25 : 0;
+  const widthScore = rows.filter(r => r.length >= 2).length * 3;
+  const rowScore = Math.min(rows.length, 20);
+  return headerScore + widthScore + rowScore - (replacementChars * 50);
+}
+
+function decodeWithEncoding(bytes, encoding) {
+  try {
+    return new TextDecoder(encoding, { fatal: false }).decode(bytes);
+  } catch (error) {
+    return '';
+  }
+}
+
+function decodePrizeCSVBuffer(buffer) {
+  const bytes = new Uint8Array(buffer || []);
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    return decodeWithEncoding(bytes, 'utf-8');
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return decodeWithEncoding(bytes, 'utf-16le');
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    return decodeWithEncoding(bytes, 'utf-16be');
+  }
+
+  const candidates = ['utf-8', 'big5', 'utf-16le']
+    .map(encoding => ({ encoding, text: decodeWithEncoding(bytes, encoding) }))
+    .filter(candidate => candidate.text);
+
+  candidates.sort((a, b) => scoreCSVText(b.text) - scoreCSVText(a.text));
+  return candidates[0]?.text || '';
+}
+
+function mapPrizeHeaderRobust(headers, rows = []) {
+  const h = headers.map(normalizePrizeHeader);
   const find = (names) => {
-    for (const n of names) {
-      const idx = h.indexOf(n.toLowerCase());
-      if (idx !== -1) return idx;
+    const wanted = names.map(normalizePrizeHeader);
+    for (const name of wanted) {
+      const exact = h.indexOf(name);
+      if (exact !== -1) return exact;
+    }
+    for (let i = 0; i < h.length; i++) {
+      if (wanted.some(name => name && h[i].includes(name))) return i;
     }
     return -1;
   };
-  return {
-    no:    find(['no','序號','號碼','編號','number']),
-    id:    find(['id', '編號']),
-    name:  find(['name', '獎品', '獎項', '名稱', 'prize']),
-    quota: find(['quota', '名額', '數量'])
+
+  const idx = {
+    no: find([
+      'no', 'number', 'item no', 'prize no', 'gift no',
+      '序號', '編號', '獎品編號', '禮品編號', '禮物編號'
+    ]),
+    id: find(['id', 'prize id', 'gift id']),
+    name: find([
+      'name', 'prize', 'prize name', 'gift', 'gift name', 'item', 'item name',
+      '獎品', '獎品名稱', '禮品', '禮品名稱', '禮物', '禮物名稱', '獎項', '獎項名稱'
+    ]),
+    quota: find([
+      'quota', 'qty', 'quantity', 'count', 'amount', 'winner count', 'winners',
+      '數量', '名額', '份數', '獎品數量', '禮品數量', '中獎名額'
+    ])
   };
+
+  if (idx.name === -1) {
+    idx.name = h.findIndex((_, i) => ![idx.no, idx.id, idx.quota].includes(i));
+  }
+
+  if (idx.quota === -1 && rows.length) {
+    const firstDataRow = rows.find(r => r.some(v => String(v).trim())) || [];
+    idx.quota = firstDataRow.findIndex((v, i) => i !== idx.name && i !== idx.no && i !== idx.id && Number.isFinite(Number(v)));
+  }
+
+  return idx;
 }
 
 export async function importPrizesCSV(text) {
   const eid = getCurrentEventId();
   if (!eid) throw new Error('尚未選擇活動');
 
-  const lines = String(text).split(/\r?\n/).filter(l => l.trim().length);
-  if (!lines.length) return [];
+  let rows = parseCSVRows(text);
+  if (!rows.length) return [];
 
-  const header = splitCSVLine(lines[0]);
-  const idx = mapPrizeHeader(header);
+  const hasHeader = hasPrizeHeader(rows[0]);
+  const noHeaderLooksLikeNoNameQuota = !hasHeader
+    && rows[0].length >= 3
+    && !Number.isFinite(Number(rows[0][1]))
+    && Number.isFinite(Number(rows[0][2]));
+  const header = hasHeader
+    ? rows[0]
+    : rows[0].map((_, i) => (
+      noHeaderLooksLikeNoNameQuota
+        ? (i === 0 ? 'no' : i === 1 ? 'name' : i === 2 ? 'quota' : `col${i + 1}`)
+        : (i === 0 ? 'name' : i === 1 ? 'quota' : `col${i + 1}`)
+    ));
+  rows = hasHeader ? rows.slice(1) : rows;
 
-  const list = lines.slice(1).map(line => {
-    const cols = splitCSVLine(line);
+  const idx = mapPrizeHeaderRobust(header, rows);
+
+  const list = rows.map(cols => {
     const pick = (i) => (i >= 0 && i < cols.length) ? cols[i] : '';
     const name = String(pick(idx.name) || '').trim();
     if (!name) return null;
@@ -207,6 +355,10 @@ export async function importPrizesCSV(text) {
     const id = String(pick(idx.id) || '').trim() || ('p' + Math.random().toString(36).slice(2, 8));
     return ensurePrizeShape({ id, no, name, quota, winners: [] });
   }).filter(Boolean);
+
+  if (!list.length) {
+    throw new Error('No gifts found in CSV. Use columns such as Gift/Gift Name/Prize Name and Quantity/Qty, or rows like "Gift Name,Quantity".');
+  }
 
   await setPrizes(eid, list);
 
@@ -229,10 +381,19 @@ export async function importPrizesCSV(text) {
 export function handlePrizeImportCSV(file, cb) {
   const reader = new FileReader();
   reader.onload = async () => {
-    await importPrizesCSV(String(reader.result));
-    if (cb) cb();
+    try {
+      const text = decodePrizeCSVBuffer(reader.result);
+      await importPrizesCSV(text);
+      if (cb) cb();
+    } catch (error) {
+      console.error('[handlePrizeImportCSV] import failed', error);
+      alert(`[Gift CSV Import Error]\n${error?.message || String(error)}`);
+    }
   };
-  reader.readAsText(file);
+  reader.onerror = () => {
+    alert('[Gift CSV Import Error]\nCould not read the selected CSV file.');
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 /* ----------------- draw core ----------------- */
