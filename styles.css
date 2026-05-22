@@ -761,10 +761,19 @@ body:not(.is-public) #cmsStage16x9.cms-stage{
   gap: 16px;
   align-items:center;
 }
+.stage-row.header.is-logo-hidden{
+  grid-template-columns: 1fr;
+}
+.stage-row.header.is-logo-hidden .banner-box{
+  grid-column: 1 / -1;
+}
 
 .is-public .stage-row.header{
   display:grid;
   grid-template-columns: 1fr 8fr;
+}
+.is-public .stage-row.header.is-logo-hidden{
+  grid-template-columns: 1fr;
 }
 
 .logo-box{

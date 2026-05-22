@@ -150,6 +150,12 @@
   grid-template-columns: auto 1fr !important;
   align-items: center;
 }
+.is-public .stage-row.header.is-logo-hidden {
+  grid-template-columns: 1fr !important;
+}
+.is-public .stage-row.header.is-logo-hidden #stageBanner {
+  grid-column: 1 / -1;
+}
 .is-public .stage-row.header #stageBanner {
   justify-self: stretch;
   align-self: center;

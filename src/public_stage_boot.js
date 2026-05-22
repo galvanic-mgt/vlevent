@@ -38,10 +38,12 @@ async function refreshAssets(eid) {
 
   const logoEl   = document.getElementById('stageLogo');
   const bannerEl = document.getElementById('stageBanner');
+  const headerEl = logoEl?.closest('.stage-row.header') || bannerEl?.closest('.stage-row.header');
+  const hideLogo = assetSettings?.hideLogoOnDraws === true;
+  if (headerEl) headerEl.classList.toggle('is-logo-hidden', hideLogo);
 
   // LOGO box
   if (logoEl) {
-    const hideLogo = assetSettings?.hideLogoOnDraws === true;
     logoEl.style.display = hideLogo ? 'none' : '';
     if (hideLogo) {
       logoEl.style.backgroundImage = '';

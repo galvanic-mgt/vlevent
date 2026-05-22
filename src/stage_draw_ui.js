@@ -240,6 +240,7 @@ export async function renderStageDraw(mode){
 
   const logoEl      = document.getElementById('stageLogo');
   const bannerEl    = document.getElementById('stageBanner');
+  const headerEl    = logoEl?.closest('.stage-row.header') || bannerEl?.closest('.stage-row.header');
   const prizeNameEl = document.getElementById('stagePrizeName');
   const prizeLeftEl = document.getElementById('stagePrizeLeft');
   const gridEl      = document.getElementById('stageGrid');
@@ -312,9 +313,10 @@ export async function renderStageDraw(mode){
   }
 
   // Logo/Banner are DIVs — set background or fallback text
+  const hideLogo = assets.hideLogoOnDraws === true;
+  if (headerEl) headerEl.classList.toggle('is-logo-hidden', hideLogo);
   if (logoEl) {
     const logoSrc = assets.logo || info.logo || '';
-    const hideLogo = assets.hideLogoOnDraws === true;
     logoEl.style.display = hideLogo ? 'none' : '';
     if (!hideLogo && logoSrc) { logoEl.style.backgroundImage = `url(${logoSrc})`; logoEl.style.backgroundSize='contain'; logoEl.style.backgroundRepeat='no-repeat'; logoEl.style.backgroundPosition='center'; logoEl.textContent=''; }
   }
