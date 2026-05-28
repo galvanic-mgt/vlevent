@@ -210,14 +210,14 @@ export async function performDraw(batchSize, hooks){
     if (skipCountdown && typeof window !== 'undefined') {
       window.__skipCountdownFlag = true;
     }
+    const drawPromise = coreDrawBatch(
+      Math.min(10, Math.max(1, Number(batchSize)||1))
+    );
     if (!skipCountdown) {
       await countdown321(overlayEl);
     }
 
-
-    const { batch } = await coreDrawBatch(
-      Math.min(10, Math.max(1, Number(batchSize)||1))
-    );
+    const { batch } = await drawPromise;
     drawState.lastBatch = batch || [];
 
     // render grid now
@@ -330,8 +330,18 @@ export async function clearScreenResults(gridEl){
   try {
     const eid = getCurrentEventId();
     if (eid && FB?.patch) {
-      await FB.patch(`/events/${eid}/ui/stageState`, null);
-      await FB.patch(`/events/${eid}/ui`, { skipCountdown: false });
+      await FB.patch(`/events/${eid}/ui`, {
+        stageState: {
+          mode: 'clear',
+          currentPrizeId: null,
+          currentPrizeName: '',
+          currentRoundId: null,
+          currentRoundName: '',
+          winners: null,
+          updatedAt: Date.now()
+        },
+        skipCountdown: false
+      });
     }
   } catch (e) {
     console.warn('[clearScreenResults] failed to clear public state', e);

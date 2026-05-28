@@ -14,6 +14,7 @@ if (!eid) {
 
 // track last batch so we can animate only on changes
 let lastWinnersKey = null;
+let stageInitialized = false;
 let resultsState = null; // {trigger, items, idx, title, max, step}
 let clickBound = false;
 let lastQRKey = null;
@@ -121,11 +122,13 @@ function renderResultsStep(grid){
   });
 }
 
-async function refreshStage() {
+async function refreshStage(uiOverride) {
   if (!FB?.get || !eid) return;
 
   try {
-    const ui = await FB.get(`/events/${eid}/ui`).catch(() => null);
+    const ui = uiOverride !== undefined
+      ? uiOverride
+      : await FB.get(`/events/${eid}/ui`).catch(() => null);
     const state = ui && ui.stageState ? ui.stageState : null;
 
     const grid = document.getElementById('stageGrid');
@@ -185,12 +188,11 @@ async function refreshStage() {
       lastQRKey = null;
     }
 
-    grid.innerHTML = '';
-
     if (!state || !state.winners) {
       // nothing drawn yet — keep grid empty
       grid.innerHTML = '';
       lastWinnersKey = null;
+      stageInitialized = true;
       return;
     }
 
@@ -198,9 +200,10 @@ async function refreshStage() {
     const key = JSON.stringify(winnersArray.map(w => [w.name, w.dept, w.time]));
 
     // first load: just render, no countdown
-    if (lastWinnersKey === null) {
+    if (!stageInitialized) {
       renderBatchGridCore(grid, winnersArray, 'public');
       lastWinnersKey = key;
+      stageInitialized = true;
       return;
     }
 
@@ -231,12 +234,6 @@ async function refreshStage() {
     const cards = grid.querySelectorAll('.winner-card');
     fireConfettiAtCards(cards);
 
-    // clear skip flag so subsequent draws animate unless requested again
-    if (skip) {
-      try { await FB.patch(`/events/${eid}/ui/stageState`, { skipCountdown: false }); } catch(_){}
-      try { await FB.patch(`/events/${eid}/ui`, { skipCountdown: false }); } catch(_){}
-    }
-
     // leaving draw mode, ensure mode classes are removed if not active
     document.body.classList.remove('qr-mode');
     if (!resultsState) document.body.classList.remove('results-mode');
@@ -246,6 +243,10 @@ async function refreshStage() {
   }
 }
 
-// Initial + polling (simple & reliable)
-refreshStage();
-setInterval(refreshStage, 2000);
+// Initial + change stream. This avoids constant Firebase reads while staying live.
+(async () => {
+  await refreshStage();
+  if (FB?.listen && eid) {
+    FB.listen(`/events/${eid}/ui`, (ui) => refreshStage(ui), { fallbackMs: 5000 });
+  }
+})();

@@ -131,8 +131,28 @@ export async function setCurrentPrize(prizeId) {
   // sanity: confirm the prize exists if a non-null id is provided
   if (pid) {
     const prizes = (await getPrizes(eid)) || [];
-    const exists = prizes.some(p => p && p.id === pid);
-    if (!exists) throw new Error(`找不到獎項：${pid}`);
+    const prize = prizes.find(p => p && p.id === pid);
+    if (!prize) throw new Error(`找不到獎項：${pid}`);
+    await FB.patch(`/events/${eid}/ui`, {
+      stageState: {
+        mode: 'main',
+        currentPrizeId: pid,
+        currentPrizeName: prize.name || '',
+        winners: null,
+        updatedAt: Date.now()
+      },
+      rewardRoundState: {
+        currentPrizeId: null,
+        winners: null,
+        updatedAt: Date.now()
+      },
+      skipCountdown: false
+    }).catch(e => console.warn('[setCurrentPrize] unable to reset public stage mode', e));
+  } else {
+    await FB.patch(`/events/${eid}/ui`, {
+      stageState: null,
+      skipCountdown: false
+    }).catch(e => console.warn('[setCurrentPrize] unable to clear public stage mode', e));
   }
 
   await setCurrentPrizeIdRemote(eid, pid);
@@ -479,16 +499,12 @@ export async function drawBatch(n = 1, opts = {}) {
       winnerKeys.has(winnerKey(p)) ? { ...p, prize: prizeName } : p
     );
 
-    // 1) Save winners & people like before
-    await setPrizes(eid, prizes);
-    await setPeople(eid, peopleUpdated);
-
-    // 2) Single, clean sync to RTDB for public board
-    try {
-      await FB.patch(`/events/${eid}/ui`, {
+    const stagePatch = {
         skipCountdown: skipCountdownFlag || undefined,
         stageState: {
+          mode: 'main',
           currentPrizeId: curId,
+          currentPrizeName: prizeName,
           currentBatch: Number(n) || 1,
           skipCountdown: skipCountdownFlag || undefined,
           winners: picks.map(w => ({
@@ -497,9 +513,17 @@ export async function drawBatch(n = 1, opts = {}) {
             time: now
           }))
         }
-      });
+      };
+
+    try {
+      await Promise.all([
+        setPrizes(eid, prizes),
+        setPeople(eid, peopleUpdated),
+        FB.patch(`/events/${eid}/ui`, stagePatch)
+      ]);
     } catch (e) {
-      console.warn('[Draw Sync] Unable to write ui.stageState', e);
+      console.warn('[Draw Sync] Unable to save draw state', e);
+      throw e;
     }
 
     return { ok: true, batch: picks, prizes };

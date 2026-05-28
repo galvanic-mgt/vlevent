@@ -1,5 +1,5 @@
 import { FB } from './fb.js';
-import { getCurrentEventId, getPeople, setPeople } from './core_firebase.js';
+import { getCurrentEventId, getPeople, setPeople, setCurrentPrizeIdRemote } from './core_firebase.js';
 
 function makeId(prefix = 'r') {
   return prefix + Math.random().toString(36).slice(2, 8);
@@ -25,7 +25,7 @@ function normalizePrize(prize = {}) {
   return {
     id: prize.id || makeId('rp'),
     no: prize.no || '',
-    name: prize.name || 'Prize',
+    name: prize.name || '獎品',
     quota: Math.max(0, Number(prize.quota || 1)) || 1,
     winners: Array.isArray(prize.winners) ? prize.winners : []
   };
@@ -35,7 +35,7 @@ function normalizeRound(round = {}) {
   const id = round.id || makeId('round');
   return {
     id,
-    name: round.name || 'Reward Round',
+    name: round.name || '第二輪抽獎',
     allowMainRoundWinners: round.allowMainRoundWinners !== false,
     allowDuplicateWithinRound: round.allowDuplicateWithinRound === true,
     prizes: Array.isArray(round.prizes) ? round.prizes.map(normalizePrize) : [],
@@ -63,12 +63,19 @@ function assertFirebaseOk(result) {
 }
 
 export async function ensureSecondPrizeRound(eid = getCurrentEventId()) {
-  if (!eid) throw new Error('Missing event');
+  if (!eid) throw new Error('未選擇活動');
   const rounds = await getRewardRounds(eid);
-  if (rounds.secondPrize) return normalizeRound(rounds.secondPrize);
+  if (rounds.secondPrize) {
+    const round = normalizeRound(rounds.secondPrize);
+    if (round.name === 'Second Prize') {
+      round.name = '第二輪抽獎';
+      assertFirebaseOk(await FB.put(`/events/${eid}/ui/rewardRounds/${round.id}`, round));
+    }
+    return round;
+  }
   const round = normalizeRound({
     id: 'secondPrize',
-    name: 'Second Prize',
+    name: '第二輪抽獎',
     allowMainRoundWinners: true,
     allowDuplicateWithinRound: false
   });
@@ -79,11 +86,11 @@ export async function ensureSecondPrizeRound(eid = getCurrentEventId()) {
 
 export async function addRewardRound(name) {
   const eid = getCurrentEventId();
-  if (!eid) throw new Error('Missing event');
+  if (!eid) throw new Error('未選擇活動');
   const id = makeId('round');
   const round = normalizeRound({
     id,
-    name: name || 'Reward Round',
+    name: name || '第二輪抽獎',
     allowMainRoundWinners: true,
     allowDuplicateWithinRound: false
   });
@@ -94,13 +101,13 @@ export async function addRewardRound(name) {
 
 export async function updateRewardRound(roundId, patch = {}) {
   const eid = getCurrentEventId();
-  if (!eid || !roundId) throw new Error('Missing round');
+  if (!eid || !roundId) throw new Error('未選擇輪次');
   assertFirebaseOk(await FB.patch(`/events/${eid}/ui/rewardRounds/${roundId}`, patch));
 }
 
 export async function addRewardRoundPrize(roundId, partial = {}) {
   const eid = getCurrentEventId();
-  if (!eid || !roundId) throw new Error('Missing round');
+  if (!eid || !roundId) throw new Error('未選擇輪次');
   const rawRound = await FB.get(`/events/${eid}/ui/rewardRounds/${roundId}`);
   if (rawRound && rawRound.error) throw new Error(rawRound.error);
   const round = normalizeRound(rawRound);
@@ -113,16 +120,57 @@ export async function addRewardRoundPrize(roundId, partial = {}) {
 
 export async function setCurrentRewardSelection(roundId, prizeId) {
   const eid = getCurrentEventId();
-  if (!eid) throw new Error('Missing event');
+  if (!eid) throw new Error('未選擇活動');
   assertFirebaseOk(await FB.patch(`/events/${eid}/ui/rewardRoundState`, {
     currentRoundId: roundId || null,
     currentPrizeId: prizeId || null
   }));
 }
 
+export async function setCurrentRewardOnStage(roundId, prizeId) {
+  const eid = getCurrentEventId();
+  if (!eid) throw new Error('未選擇活動');
+  const rounds = await getRewardRounds(eid);
+  const round = roundId ? normalizeRound(rounds?.[roundId]) : null;
+  if (!round || round.id !== roundId) throw new Error('請先選擇輪次');
+  const prize = round.prizes.find(p => p.id === prizeId);
+  if (!prize) throw new Error('請先選擇獎品');
+
+  const now = Date.now();
+  const uiPatch = {
+    stageState: {
+      mode: 'reward',
+      currentRoundId: round.id,
+      currentRoundName: round.name,
+      currentPrizeId: prize.id,
+      currentPrizeName: prize.name,
+      currentBatch: 1,
+      winners: null,
+      updatedAt: now
+    },
+    rewardRoundState: {
+      currentRoundId: round.id,
+      currentPrizeId: prize.id,
+      roundId: round.id,
+      roundName: round.name,
+      prizeId: prize.id,
+      prizeName: prize.name,
+      winners: null,
+      updatedAt: now
+    },
+    skipCountdown: false
+  };
+  const [uiResult] = await Promise.all([
+    FB.patch(`/events/${eid}/ui`, uiPatch),
+    setCurrentPrizeIdRemote(eid, null)
+  ]);
+  assertFirebaseOk(uiResult);
+  return { round, prize };
+}
+
 export async function drawRewardRoundPrize(batchSize = 1, opts = {}) {
   const eid = getCurrentEventId();
-  if (!eid) throw new Error('Missing event');
+  if (!eid) throw new Error('未選擇活動');
 
   const [rounds, state, people] = await Promise.all([
     getRewardRounds(eid),
@@ -132,13 +180,13 @@ export async function drawRewardRoundPrize(batchSize = 1, opts = {}) {
 
   const roundId = state.currentRoundId;
   const prizeId = state.currentPrizeId;
-  if (!roundId || !rounds[roundId]) throw new Error('Select a reward round first');
+  if (!roundId || !rounds[roundId]) throw new Error('請先選擇輪次');
   const round = normalizeRound(rounds[roundId]);
   const prize = round.prizes.find(p => p.id === prizeId);
-  if (!prize) throw new Error('Select a reward prize first');
+  if (!prize) throw new Error('請先選擇獎品');
 
   const left = Math.max(0, Number(prize.quota || 0) - (prize.winners || []).length);
-  if (left <= 0) throw new Error('This reward prize has no quota left');
+  if (left <= 0) throw new Error('此獎品名額已滿');
 
   const winnersInRound = new Set(
     round.prizes.flatMap(p => (p.winners || []).map(winnerKey))
@@ -149,7 +197,7 @@ export async function drawRewardRoundPrize(batchSize = 1, opts = {}) {
     if (!round.allowDuplicateWithinRound && winnersInRound.has(winnerKey(p))) return false;
     return true;
   });
-  if (!pool.length) throw new Error('No eligible people remain for this reward round');
+  if (!pool.length) throw new Error('沒有符合資格的參加者可供本輪抽獎');
 
   const want = Math.max(1, Math.min(Number(batchSize) || 1, 10, left, pool.length));
   const picks = pickUnique(pool, want);
@@ -178,9 +226,7 @@ export async function drawRewardRoundPrize(batchSize = 1, opts = {}) {
     };
   });
 
-  assertFirebaseOk(await FB.put(`/events/${eid}/ui/rewardRounds/${round.id}`, round));
-  await setPeople(eid, peopleUpdated);
-  assertFirebaseOk(await FB.patch(`/events/${eid}/ui`, {
+  const uiPatch = {
     stageState: {
       mode: 'reward',
       currentRoundId: round.id,
@@ -204,7 +250,14 @@ export async function drawRewardRoundPrize(batchSize = 1, opts = {}) {
       winners: picks.map(w => ({ name: w.name || '', dept: w.dept || '', time: now })),
       updatedAt: now
     }
-  }));
+  };
+  const [roundResult, , uiResult] = await Promise.all([
+    FB.put(`/events/${eid}/ui/rewardRounds/${round.id}`, round),
+    setPeople(eid, peopleUpdated),
+    FB.patch(`/events/${eid}/ui`, uiPatch)
+  ]);
+  assertFirebaseOk(roundResult);
+  assertFirebaseOk(uiResult);
 
   return { round, prize, batch: picks };
 }

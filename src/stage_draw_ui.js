@@ -28,6 +28,11 @@ import {
 
 function el(id){ return document.getElementById(id); }
 
+function cssUrl(src) {
+  const safe = String(src || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]/g, '');
+  return `url("${safe}")`;
+}
+
 function rewardStatus(text, isError = false){
   const node = document.getElementById('stageRewardStatus');
   if (!node) return;
@@ -240,6 +245,7 @@ export async function renderStageDraw(mode){
 
   const logoEl      = document.getElementById('stageLogo');
   const bannerEl    = document.getElementById('stageBanner');
+  const stageEl     = document.getElementById('cmsStage16x9');
   const headerEl    = logoEl?.closest('.stage-row.header') || bannerEl?.closest('.stage-row.header');
   const prizeNameEl = document.getElementById('stagePrizeName');
   const prizeLeftEl = document.getElementById('stagePrizeLeft');
@@ -251,6 +257,31 @@ export async function renderStageDraw(mode){
 
   const refreshCurrentPrizeHUD = async ()=>{
     try{
+      const stageState = await FB.get(`/events/${eid}/ui/stageState`).catch(() => null);
+      if (stageState?.mode === 'clear') {
+        if (prizeNameEl) prizeNameEl.textContent = '—';
+        if (prizeLeftEl) prizeLeftEl.textContent = '—';
+        return;
+      }
+      if (stageState?.mode === 'reward') {
+        const rewardRounds = await getRewardRounds(eid).catch(() => ({}));
+        const round = rewardRounds?.[stageState.currentRoundId] || {};
+        const rewardPrize = (round.prizes || []).find(p => p && p.id === stageState.currentPrizeId) || null;
+        if (prizeNameEl) {
+          const roundName = stageState.currentRoundName || round.name || '第二輪抽獎';
+          const prizeName = stageState.currentPrizeName || rewardPrize?.name || '';
+          prizeNameEl.textContent = prizeName ? `${roundName} - ${prizeName}` : roundName;
+        }
+        if (prizeLeftEl) {
+          if (rewardPrize) {
+            const leftReward = Math.max(0, Number(rewardPrize.quota || 0) - ((rewardPrize.winners || []).length));
+            prizeLeftEl.textContent = leftReward;
+          } else {
+            prizeLeftEl.textContent = '—';
+          }
+        }
+        return;
+      }
       if (isRewardDrawMode()) {
         await refreshRewardHUD();
         return;
@@ -272,12 +303,20 @@ export async function renderStageDraw(mode){
     }catch(_){}
   };
 
-  // CMS: live-poll stageState so CMS updates when tablet/public draw
+  // CMS: listen for stageState changes so CMS updates when tablet/public draw
   if (mode === 'cms') {
-    if (renderStageDraw._cmsTimer) clearInterval(renderStageDraw._cmsTimer);
-    const poll = async ()=>{
+    if (Array.isArray(renderStageDraw._cmsStops)) {
+      renderStageDraw._cmsStops.forEach(stop => { try { stop(); } catch (_) {} });
+    }
+    const handleStageState = async (state)=>{
       try{
-        const state = await FB.get(`/events/${eid}/ui/stageState`).catch(()=>null);
+        if (state?.mode === 'clear') {
+          drawState.lastBatch = [];
+          renderBatchGridCore(document.getElementById('stageGrid'), [], 'cms');
+          if (prizeNameEl) prizeNameEl.textContent = '—';
+          if (prizeLeftEl) prizeLeftEl.textContent = '—';
+          return;
+        }
         if (!state || !state.winners) return;
         const winnersArray = Array.isArray(state.winners) ? state.winners : Object.values(state.winners);
         renderBatchGridCore(document.getElementById('stageGrid'), winnersArray, 'cms');
@@ -286,10 +325,12 @@ export async function renderStageDraw(mode){
         await refreshCurrentPrizeHUD();
       }catch(e){/*ignore*/}
     };
-    renderStageDraw._cmsTimer = setInterval(poll, 1200);
-    // Also poll current prize HUD in case there is no stageState update
-    if (renderStageDraw._cmsPrizeTimer) clearInterval(renderStageDraw._cmsPrizeTimer);
-    renderStageDraw._cmsPrizeTimer = setInterval(refreshCurrentPrizeHUD, 1500);
+    renderStageDraw._cmsStops = [
+      FB.listen(`/events/${eid}/ui/stageState`, handleStageState, { fallbackMs: 5000 }),
+      FB.listen(`/events/${eid}/currentPrizeId`, () => refreshCurrentPrizeHUD(), { fallbackMs: 5000 }),
+      FB.listen(`/events/${eid}/prizes`, () => refreshCurrentPrizeHUD(), { fallbackMs: 5000 }),
+      FB.listen(`/events/${eid}/ui/rewardRounds`, () => refreshCurrentPrizeHUD(), { fallbackMs: 5000 })
+    ];
   }
 
 
@@ -315,14 +356,49 @@ export async function renderStageDraw(mode){
   // Logo/Banner are DIVs — set background or fallback text
   const hideLogo = assets.hideLogoOnDraws === true;
   if (headerEl) headerEl.classList.toggle('is-logo-hidden', hideLogo);
+  if (stageEl && mode === 'cms') {
+    const bgSrc = assets.background || (Array.isArray(assets.photos) ? assets.photos[0] : '') || assets.banner || '';
+    if (bgSrc) {
+      stageEl.style.backgroundImage = `linear-gradient(rgba(15,18,22,.28), rgba(15,18,22,.28)), ${cssUrl(bgSrc)}`;
+      stageEl.style.backgroundSize = 'cover';
+      stageEl.style.backgroundPosition = 'center center';
+      stageEl.style.backgroundRepeat = 'no-repeat';
+    } else {
+      stageEl.style.backgroundImage = '';
+      stageEl.style.backgroundSize = '';
+      stageEl.style.backgroundPosition = '';
+      stageEl.style.backgroundRepeat = '';
+    }
+  }
   if (logoEl) {
     const logoSrc = assets.logo || info.logo || '';
     logoEl.style.display = hideLogo ? 'none' : '';
-    if (!hideLogo && logoSrc) { logoEl.style.backgroundImage = `url(${logoSrc})`; logoEl.style.backgroundSize='contain'; logoEl.style.backgroundRepeat='no-repeat'; logoEl.style.backgroundPosition='center'; logoEl.textContent=''; }
+    if (hideLogo) {
+      logoEl.style.backgroundImage = '';
+      logoEl.textContent = '';
+    } else if (logoSrc) {
+      logoEl.style.backgroundImage = cssUrl(logoSrc);
+      logoEl.style.backgroundSize = 'contain';
+      logoEl.style.backgroundRepeat = 'no-repeat';
+      logoEl.style.backgroundPosition = 'center';
+      logoEl.textContent = '';
+    } else {
+      logoEl.style.backgroundImage = '';
+      logoEl.textContent = 'LOGO';
+    }
   }
   if (bannerEl) {
     const bannerSrc = assets.banner || info.banner || '';
-    if (bannerSrc) { bannerEl.style.backgroundImage = `url(${bannerSrc})`; bannerEl.style.backgroundSize='cover'; bannerEl.style.backgroundRepeat='no-repeat'; bannerEl.style.backgroundPosition='center'; bannerEl.textContent=''; }
+    if (bannerSrc) {
+      bannerEl.style.backgroundImage = cssUrl(bannerSrc);
+      bannerEl.style.backgroundSize = 'cover';
+      bannerEl.style.backgroundRepeat = 'no-repeat';
+      bannerEl.style.backgroundPosition = 'center';
+      bannerEl.textContent = '';
+    } else {
+      bannerEl.style.backgroundImage = '';
+      bannerEl.textContent = 'Banner space';
+    }
   }
 
   // Render any last batch already in memory (shared renderer)
@@ -401,11 +477,12 @@ if (exportBtn) exportBtn.onclick = ()=> exportCurrentWinners();
       return;
     }
     hideCountdown();
+    const drawPromise = drawRewardRoundPrize(n, { skipCountdown });
     if (!skipCountdown) {
       showCountdown();
       await countdown321(overlayEl);
     }
-    const res = await drawRewardRoundPrize(n, { skipCountdown });
+    const res = await drawPromise;
     drawState.lastBatch = res.batch || [];
     renderBatchGridCore(gridEl, drawState.lastBatch, mode);
     if (mode !== 'public') {

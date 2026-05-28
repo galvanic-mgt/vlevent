@@ -1,8 +1,8 @@
-import { listEvents, createEvent, setCurrentEventId, getCurrentEventId, getEventInfo, saveEventInfo,
+import { listEvents, createEvent, setCurrentEventId, getCurrentEventId, getEventInfo, saveEventInfo, getFirebaseDebugUrl,
          getPeople, setPeople, getPrizes, setPrizes, getCurrentPrizeIdRemote, setCurrentPrizeIdRemote,
          getQuestions, setQuestions, getAssets, setAssets, getPolls, setPoll, upsertEventMeta } from './core_firebase.js';
 import { addPrize, removePrize, setCurrentPrize, handlePrizeImportCSV, clearAllPrizes, updatePrize } from './stage_prizes_firebase.js';
-import { getRewardRounds, getRewardRoundState, ensureSecondPrizeRound, addRewardRound, addRewardRoundPrize, setCurrentRewardSelection, drawRewardRoundPrize, updateRewardRound } from './reward_rounds_firebase.js';
+import { getRewardRounds, getRewardRoundState, ensureSecondPrizeRound, addRewardRound, addRewardRoundPrize, setCurrentRewardSelection, setCurrentRewardOnStage, drawRewardRoundPrize, updateRewardRound } from './reward_rounds_firebase.js';
 import { handleImportCSV, exportCSV } from './roster_firebase.js';
 import { renderStageDraw } from './stage_draw_ui.js';
 import { FB } from './fb.js';
@@ -145,6 +145,7 @@ function ensurePreEventApplyQR(eid) {
   if (!eid) return;
 
   const link = preEventApplyLink(eid);
+  const adminLink = preEventAdminLink(eid);
 
   let card = document.getElementById('preEventApplyQRCard');
   if (!card) {
@@ -182,6 +183,14 @@ function ensurePreEventApplyQR(eid) {
           <button id="copyPreEventApplyLink" class="btn">複製預先登記連結</button>
           <a class="btn" href="${link}" target="_blank" rel="noopener">開啟預先登記頁</a>
         </div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.12)">
+          <div class="muted" style="font-size:13px;margin-bottom:6px">預先登記後台 CMS 連結：</div>
+          <div class="muted" style="word-break:break-all">${adminLink}</div>
+          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+            <button id="copyPreEventAdminLink" class="btn">複製預先登記 CMS 連結</button>
+            <a class="btn" href="${adminLink}" target="_blank" rel="noopener">開啟預先登記 CMS</a>
+          </div>
+        </div>
       </div>
     </div>
   `;
@@ -201,6 +210,14 @@ function ensurePreEventApplyQR(eid) {
     try {
       await navigator.clipboard.writeText(link);
       alert('已複製預先登記連結');
+    } catch (e) {
+      // ignore
+    }
+  });
+  document.getElementById('copyPreEventAdminLink')?.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(adminLink);
+      alert('已複製預先登記 CMS 連結');
     } catch (e) {
       // ignore
     }
@@ -251,6 +268,12 @@ function landingPublicBoardLink(eid) {
 function preEventApplyLink(eid) {
   const u = new URL(location.href);
   u.pathname = (u.pathname.replace(/[^/]+$/, '') || '/') + 'pre_event_apply.html';
+  u.search = `?event=${encodeURIComponent(eid)}`;
+  return u.href;
+}
+function preEventAdminLink(eid) {
+  const u = new URL(location.href);
+  u.pathname = (u.pathname.replace(/[^/]+$/, '') || '/') + 'pre_event_admin.html';
   u.search = `?event=${encodeURIComponent(eid)}`;
   return u.href;
 }
@@ -384,7 +407,16 @@ async function saveUserToDB(user){
     password: clean.password,
     events: clean.events
   });
+  const saved = await FB.get(`/users/${clean.id}`);
+  if (!saved || saved.username !== clean.username) {
+    throw new Error('Firebase 寫入後未能讀回新使用者。');
+  }
   await loadUsersFromDB();
+  const normalized = normalizeUser({ id: clean.id, ...saved });
+  if (!usersCache.some(u => u.id === clean.id)) {
+    usersCache = [...usersCache, normalized];
+  }
+  return normalized;
 }
 async function deleteUserFromDB(id){
   await FB.put(`/users/${id}`, null);
@@ -401,8 +433,27 @@ function setActiveUser(id){
   else localStorage.removeItem(ACTIVE_KEY);
   applyRoleGuard();
 }
+function canManageAllEvents(user = getActiveUser()){
+  return user?.role === ROLE_MASTER || !(user?.events || []).length;
+}
+function canAccessEvent(id, user = getActiveUser()){
+  if (!id) return false;
+  if (canManageAllEvents(user)) return true;
+  return (user.events || []).includes(id);
+}
+function filterEventsForActiveUser(events = []){
+  const user = getActiveUser();
+  if (canManageAllEvents(user)) return events;
+  return events.filter(ev => canAccessEvent(ev.id, user));
+}
 async function ensureUsersLoaded(){
   if (!usersCache.length) await loadUsersFromDB();
+}
+function setUserStatus(text = '', isError = false){
+  const el = document.getElementById('userStatus');
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = isError ? '#ff5a67' : '';
 }
 function requireMasterPassword(){
   const active = getActiveUser();
@@ -515,28 +566,45 @@ function renderUsersUI(){
 }
 
 function bindUsers(){
-  document.getElementById('btnAddUser')?.addEventListener('click', async ()=>{
+  const addBtn = document.getElementById('btnAddUser');
+  if (!addBtn || addBtn.dataset.bound) return;
+  addBtn.dataset.bound = '1';
+  addBtn.addEventListener('click', async ()=>{
     await ensureUsersLoaded();
-    if (!requireMasterPassword()) return;
+    const active = getActiveUser();
+    if (active.role !== ROLE_MASTER) {
+      setUserStatus('只有 Master 可以新增使用者。', true);
+      return;
+    }
     const name = document.getElementById('userName')?.value.trim();
+    const username = document.getElementById('userLogin')?.value.trim();
+    const password = document.getElementById('userPassword')?.value.trim();
     const role = document.getElementById('userRole')?.value || ROLE_ROSTER;
-    if (!name) return;
-    const username = prompt('設定登入帳號：')?.trim();
-    const password = prompt('設定登入密碼：')?.trim();
-    if (!username || !password) return;
-    const eventsRaw = prompt('允許的活動 ID（用逗號分隔，留空=全部）：','');
+    const eventsRaw = document.getElementById('userEvents')?.value.trim() || '';
+    if (!name || !username || !password) {
+      setUserStatus('請填寫名稱、登入帳號及登入密碼。', true);
+      return;
+    }
+    if (usersCache.some(u => u.username === username)) {
+      setUserStatus('登入帳號已存在，請使用另一個帳號。', true);
+      return;
+    }
     const events = eventsRaw ? eventsRaw.split(',').map(s=>s.trim()).filter(Boolean) : [];
     const id = 'u-' + Math.random().toString(36).slice(2,8);
     const newUser = normalizeUser({ id, name, role, username, password, events });
-    usersCache = [...usersCache, newUser];
     try {
+      setUserStatus('正在寫入 Firebase...');
       await saveUserToDB(newUser);
     } catch (err) {
       console.error('[users] add failed', err);
-      alert('無法新增使用者，請確認權限或規則設定。');
+      setUserStatus(`新增使用者失敗：${err?.message || String(err)}`, true);
       return;
     }
     document.getElementById('userName').value = '';
+    document.getElementById('userLogin').value = '';
+    document.getElementById('userPassword').value = '';
+    document.getElementById('userEvents').value = '';
+    setUserStatus(`已新增使用者：${name}`);
     renderUsersUI();
     applyRoleGuard();
   });
@@ -546,9 +614,22 @@ function bindUsers(){
 function bindLogin(){
   const gate = document.getElementById('loginGate');
   const form = document.getElementById('loginForm');
-  if (!gate || !form) return;
+  if (!gate || !form) return true;
   const userInput = document.getElementById('loginUser');
   const passInput = document.getElementById('loginPass');
+  const errorEl = document.getElementById('loginError');
+  const lock = (msg = '') => {
+    document.body.classList.remove('cms-auth-pending');
+    document.body.classList.add('cms-locked');
+    gate.style.display = 'flex';
+    if (errorEl) errorEl.textContent = msg;
+  };
+  const unlock = () => {
+    document.body.classList.remove('cms-auth-pending');
+    document.body.classList.remove('cms-locked');
+    gate.style.display = 'none';
+    if (errorEl) errorEl.textContent = '';
+  };
   const doLogin = async (u, p)=>{
     await loadUsersFromDB();
     let found = usersCache.find(x => x.username === u && x.password === p);
@@ -561,28 +642,50 @@ function bindLogin(){
     if (found) {
       setActiveUser(found.id);
       sessionStorage.setItem(SESSION_KEY, '1');
-      gate.style.display = 'none';
-      renderUsersUI();
-      applyRoleGuard();
-      renderAll?.();
+      unlock();
+      window.location.reload();
       return true;
     }
-    alert('帳號或密碼錯誤');
+    lock('帳號或密碼錯誤');
+    if (passInput) {
+      passInput.value = '';
+      passInput.focus();
+    }
     return false;
   };
-  form.addEventListener('submit', (e)=>{
+  if (!form.dataset.bound) {
+    form.dataset.bound = '1';
+    form.addEventListener('submit', (e)=>{
     e.preventDefault();
     const u = userInput?.value?.trim() || '';
     const p = passInput?.value?.trim() || '';
-    if (!u || !p) return;
+      if (!u || !p) {
+        lock('請輸入帳號及密碼');
+        return;
+      }
     doLogin(u,p);
-  });
+    });
+  }
   // always require login unless a valid session exists
   if (sessionStorage.getItem(SESSION_KEY) === '1' && getActiveUser()?.id) {
-    gate.style.display = 'none';
+    unlock();
+    return true;
   } else {
-    gate.style.display = 'flex';
+    lock();
+    return false;
   }
+}
+
+function bindLogout(){
+  const btn = document.getElementById('btnLogout');
+  if (!btn || btn.dataset.bound) return;
+  btn.dataset.bound = '1';
+  btn.addEventListener('click', () => {
+    sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(ACTIVE_KEY);
+    document.body.classList.add('cms-auth-pending');
+    window.location.reload();
+  });
 }
 // ====== Prize table state (sorting only) ======
 const prizeState = {
@@ -602,6 +705,22 @@ let bootEventsAdmin = ()=>{};
   }
 })();
 const $=(s)=>document.querySelector(s);
+function showFirebaseStatus(text, isError = false){
+  let el = document.getElementById('firebaseStatus');
+  const host = document.getElementById('eventList')?.parentElement;
+  if (!el && host) {
+    el = document.createElement('div');
+    el.id = 'firebaseStatus';
+    el.className = 'muted';
+    el.style.cssText = 'font-size:12px;margin:6px 0;display:flex;align-items:center;gap:6px;word-break:break-word';
+    host.insertBefore(el, document.getElementById('eventList'));
+  }
+  if (!el) return;
+  el.innerHTML = isError
+    ? `<span style="width:8px;height:8px;border-radius:999px;background:#ff5a67;display:inline-block;flex:0 0 auto"></span><span>${text || 'Database connection failed'}</span>`
+    : '<span style="width:8px;height:8px;border-radius:999px;background:#4cd964;display:inline-block;flex:0 0 auto"></span><span>Database connected</span>';
+  el.style.color = isError ? '#ff5a67' : '';
+}
 function show(targetId){
   document.querySelectorAll('.subpage').forEach(s=> s.style.display='none');
   const sec = document.getElementById(targetId);
@@ -614,18 +733,34 @@ function show(targetId){
   if (targetId === 'pageStageDraw') {
     renderStageDraw('cms');
   }
+  if (targetId === 'pageRewardRounds') {
+    renderRewardRounds();
+  }
 }
 async function renderEventList(){
-  const listRaw = await listEvents();
-  // Only show events where listed !== false
-  const list = (listRaw || []).filter(ev => ev.listed !== false);
+  let listRaw = [];
+  try {
+    listRaw = await listEvents();
+    showFirebaseStatus('Database connected');
+  } catch (error) {
+    console.error('[CMS] listEvents failed', error);
+    showFirebaseStatus(`Firebase read failed: ${getFirebaseDebugUrl('/events_index')} | ${error?.message || String(error)}`, true);
+    const el = $('#eventList');
+    if (el) {
+      el.innerHTML = `<div class="muted" style="color:#ff5a67">Firebase event list read failed: ${error?.message || String(error)}</div>`;
+    }
+    return;
+  }
+  const allListedEvents = (Array.isArray(listRaw) ? listRaw : []).filter(ev => ev.listed !== false);
+  const list = filterEventsForActiveUser(allListedEvents);
 
   const el = $('#eventList'); if(!el) return; el.innerHTML = '';
+  showFirebaseStatus('Database connected');
 
   list.forEach(ev=>{
     const item = document.createElement('div');
     item.className = 'event-item' + (getCurrentEventId() === ev.id ? ' active' : '');
-    item.innerHTML = `<div class="event-name">${ev.name}</div><div class="event-meta">ID: ${ev.id}</div>`;
+    item.innerHTML = `<div class="event-name">${ev.name || '（未命名）'}</div><div class="event-meta">ID: ${ev.id}${ev.listed === false ? ' · unlisted' : ''}</div>`;
     item.onclick = async ()=>{
       const current = getCurrentEventId();
       if (current && current !== ev.id) {
@@ -637,6 +772,23 @@ async function renderEventList(){
     };
     el.appendChild(item);
   });
+  if (!list.length) {
+    const empty = document.createElement('div');
+    empty.className = 'muted';
+    empty.style.color = '#ffb74d';
+    empty.textContent = allListedEvents.length
+      ? 'No events assigned to this user.'
+      : 'Firebase connected, but /events_index has 0 events.';
+    el.appendChild(empty);
+  } else if (!el.querySelector('.event-item')) {
+    const empty = document.createElement('div');
+    empty.className = 'muted';
+    empty.style.color = '#ffb74d';
+    empty.textContent = `Firebase returned ${list.length} events, but CMS could not render event cards.`;
+    el.appendChild(empty);
+  }
+
+  if (!canManageAllEvents()) return;
 
   // Creator stays the same
   const ad = document.createElement('div'); ad.className = 'sidebar-form';
@@ -816,6 +968,31 @@ function rewardText(p){
   return [main, extra].filter(Boolean).join('<br>');
 }
 
+function formatHongKongDateTime(value, fallbackText = ''){
+  if (!value && fallbackText) return fallbackText;
+  if (!value) return '';
+  const date = typeof value === 'number' ? new Date(value) : new Date(value);
+  if (Number.isNaN(date.getTime())) return fallbackText || '';
+  return new Intl.DateTimeFormat('zh-HK', {
+    timeZone: 'Asia/Hong_Kong',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).format(date);
+}
+
+function firstLoginText(p){
+  return p?.firstLoginAtHK || formatHongKongDateTime(p?.firstLoginAt);
+}
+
+function lastLoginText(p){
+  return p?.lastLoginAtHK || formatHongKongDateTime(p?.lastLoginAt);
+}
+
 async function renderRoster(){
   const eid = getCurrentEventId(); if(!eid) return;
 
@@ -837,7 +1014,7 @@ async function renderRoster(){
   const q = (document.getElementById('searchGuest')?.value || '').toLowerCase();
   let list = people.filter(p=>{
     const extraRewards = Object.values(p.rewardRounds || {}).join(' ');
-    const hay = [p.name,p.dept,p.phone,p.code,p.table,p.seat,p.prize,extraRewards].map(x=>(x||'').toLowerCase()).join(' ');
+    const hay = [p.name,p.dept,p.phone,p.code,p.table,p.seat,firstLoginText(p),lastLoginText(p),p.prize,extraRewards].map(x=>(x||'').toLowerCase()).join(' ');
     return hay.includes(q);
   });
 
@@ -892,6 +1069,8 @@ function renderRow(tr, p, idx, mode){
       <td><input class="in code"  value="${p.code||''}"></td>
       <td><input class="in table" value="${p.table||''}"></td>
       <td><input class="in seat"  value="${p.seat||''}"></td>
+      <td>${firstLoginText(p)}</td>
+      <td>${lastLoginText(p)}</td>
       <td>${rewardText(p)}</td>
       <td>
         <button class="btn small save">儲存</button>
@@ -935,6 +1114,8 @@ function renderRow(tr, p, idx, mode){
       <td>${p.code || ''}</td>
       <td>${p.table || ''}</td>
       <td>${p.seat || ''}</td>
+      <td>${firstLoginText(p)}</td>
+      <td>${lastLoginText(p)}</td>
       <td>${rewardText(p)}</td>
       <td>
         <button class="btn small edit">編輯</button>
@@ -1110,10 +1291,17 @@ function bindRoster(){
 
 async function renderPrizes(){
   const eid = getCurrentEventId(); if(!eid) return;
-  const [prizes, curId] = await Promise.all([getPrizes(eid), getCurrentPrizeIdRemote(eid)]);
+  const [prizes, curId, stageState] = await Promise.all([
+    getPrizes(eid),
+    getCurrentPrizeIdRemote(eid),
+    FB.get(`/events/${eid}/ui/stageState`).catch(() => null)
+  ]);
   const tbody = document.getElementById('prizeRows');
   if (!tbody) return;
   tbody.innerHTML = '';
+  const activeMainId = stageState?.mode === 'reward' || stageState?.mode === 'clear'
+    ? null
+    : (stageState?.mode === 'main' ? (stageState.currentPrizeId || curId) : curId);
 
   const list = Array.isArray(prizes) ? prizes.slice() : [];
   const { sortBy, sortDir } = prizeState;
@@ -1150,7 +1338,7 @@ async function renderPrizes(){
     const used = (p.winners || []).length;
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><input type="radio" name="curpr" ${curId===p.id?'checked':''}></td>
+      <td><input type="radio" name="curpr" ${activeMainId===p.id?'checked':''}></td>
       <td>${p.no||''}</td>
       <td>${p.name||''}</td>
       <td>${p.quota||1}</td>
@@ -1162,6 +1350,7 @@ async function renderPrizes(){
     tr.querySelector('input').onchange = async ()=>{
       await setCurrentPrize(p.id);
       await renderPrizes();
+      await renderRewardRounds();
     };
     tr.querySelector('[data-del]').onclick = async ()=>{
       const go = used>0
@@ -1202,40 +1391,41 @@ async function renderPrizes(){
 
 function ensureRewardRoundPanel(){
   if (document.getElementById('rewardRoundPanel')) return;
-  const page = document.getElementById('pagePrizes');
+  const page = document.getElementById('pageRewardRounds');
   if (!page) return;
   const panel = document.createElement('div');
   panel.id = 'rewardRoundPanel';
   panel.className = 'card';
   panel.style.marginTop = '16px';
   panel.innerHTML = `
-    <h3>Extra Reward Rounds</h3>
+    <h3>第二輪抽獎</h3>
     <p class="muted" style="font-size:13px;margin-top:0">
-      First/main draw remains unchanged. Extra rounds start with Second Prize and write to each person's rewardRounds column.
+      管理第二輪或額外抽獎；第一輪主抽獎不會受影響，結果會寫入每位參加者的第二輪紀錄。
     </p>
     <div class="bar" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
-      <button id="btnEnsureSecondPrize" class="btn primary" type="button">Create / Load Second Prize</button>
-      <input id="newRewardRoundName" placeholder="New round name" style="min-width:180px">
-      <button id="btnAddRewardRound" class="btn" type="button">+ Add round</button>
+      <button id="btnEnsureSecondPrize" class="btn primary" type="button">建立 / 載入第二輪</button>
+      <input id="newRewardRoundName" placeholder="新輪次名稱" style="min-width:180px">
+      <button id="btnAddRewardRound" class="btn" type="button">+ 新增輪次</button>
     </div>
     <div class="bar" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
-      <label>Round <select id="rewardRoundSelect"></select></label>
-      <label>Prize <select id="rewardPrizeSelect"></select></label>
-      <label><input id="rewardAllowMainWinners" type="checkbox" checked> Include first-round winners</label>
-      <label><input id="rewardAllowDuplicateWithinRound" type="checkbox"> Allow duplicate within this round</label>
+      <label>輪次 <select id="rewardRoundSelect"></select></label>
+      <label>獎品 <select id="rewardPrizeSelect"></select></label>
+      <button id="btnSetCurrentRewardPrize" class="btn primary" type="button">設為目前抽獎</button>
+      <label><input id="rewardAllowMainWinners" type="checkbox" checked> 包括第一輪得獎者</label>
+      <label><input id="rewardAllowDuplicateWithinRound" type="checkbox"> 允許本輪重複得獎</label>
     </div>
     <div class="bar" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
-      <input id="newRewardPrizeName" placeholder="Reward prize name" style="min-width:180px">
-      <input id="newRewardPrizeNo" placeholder="No." style="width:90px">
-      <label>Quota <input id="newRewardPrizeQuota" type="number" min="1" value="1" style="width:90px"></label>
-      <button id="btnAddRewardPrize" class="btn" type="button">+ Add prize to round</button>
-      <label>Draw <input id="rewardBatchSize" type="number" min="1" max="10" value="1" style="width:70px"></label>
-      <button id="btnDrawRewardRound" class="btn primary" type="button">Draw extra round</button>
+      <input id="newRewardPrizeName" placeholder="第二輪獎品名稱" style="min-width:180px">
+      <input id="newRewardPrizeNo" placeholder="編號" style="width:90px">
+      <label>名額 <input id="newRewardPrizeQuota" type="number" min="1" value="1" style="width:90px"></label>
+      <button id="btnAddRewardPrize" class="btn" type="button">+ 新增本輪獎品</button>
+      <label>抽出 <input id="rewardBatchSize" type="number" min="1" max="10" value="1" style="width:70px"></label>
+      <button id="btnDrawRewardRound" class="btn primary" type="button">抽第二輪</button>
     </div>
     <div id="rewardRoundStatus" class="muted" style="min-height:20px"></div>
     <div style="overflow:auto;margin-top:10px">
       <table class="fullwidth">
-        <thead><tr><th>Round</th><th>No.</th><th>Prize</th><th>Quota</th><th>Used</th><th>Winners</th></tr></thead>
+        <thead><tr><th>使用中</th><th>輪次</th><th>編號</th><th>獎品</th><th>名額</th><th>已抽出</th><th>得獎者</th></tr></thead>
         <tbody id="rewardRoundRows"></tbody>
       </table>
     </div>
@@ -1253,7 +1443,11 @@ function setRewardStatus(text, isError){
 async function renderRewardRounds(){
   ensureRewardRoundPanel();
   const eid = getCurrentEventId(); if(!eid) return;
-  const [rounds, state] = await Promise.all([getRewardRounds(eid), getRewardRoundState(eid)]);
+  const [rounds, state, stageState] = await Promise.all([
+    getRewardRounds(eid),
+    getRewardRoundState(eid),
+    FB.get(`/events/${eid}/ui/stageState`).catch(() => null)
+  ]);
   const entries = Object.entries(rounds || {}).map(([id, r]) => ({ id, ...(r || {}) }));
   const roundSelect = document.getElementById('rewardRoundSelect');
   const prizeSelect = document.getElementById('rewardPrizeSelect');
@@ -1262,7 +1456,7 @@ async function renderRewardRounds(){
 
   roundSelect.innerHTML = '';
   if (!entries.length) {
-    roundSelect.innerHTML = '<option value="">No extra rounds yet</option>';
+    roundSelect.innerHTML = '<option value="">尚未建立第二輪</option>';
   } else {
     entries.forEach(round => {
       const opt = document.createElement('option');
@@ -1285,7 +1479,7 @@ async function renderRewardRounds(){
   prizeSelect.innerHTML = '';
   const prizes = Array.isArray(selectedRound?.prizes) ? selectedRound.prizes : [];
   if (!prizes.length) {
-    prizeSelect.innerHTML = '<option value="">No prizes in this round</option>';
+    prizeSelect.innerHTML = '<option value="">本輪尚未有獎品</option>';
   } else {
     prizes.forEach(prize => {
       const opt = document.createElement('option');
@@ -1300,11 +1494,15 @@ async function renderRewardRounds(){
   rows.innerHTML = entries.length ? entries.flatMap(round => {
     const roundPrizes = Array.isArray(round.prizes) ? round.prizes : [];
     if (!roundPrizes.length) {
-      return [`<tr><td>${round.name || round.id}</td><td colspan="5" class="muted">No prizes yet</td></tr>`];
+      return [`<tr><td></td><td>${round.name || round.id}</td><td colspan="5" class="muted">尚未有獎品</td></tr>`];
     }
     return roundPrizes.map(prize => {
       const winners = Array.isArray(prize.winners) ? prize.winners : [];
+      const checked = stageState?.mode === 'reward'
+        && stageState.currentRoundId === round.id
+        && stageState.currentPrizeId === prize.id;
       return `<tr>
+        <td><input type="radio" name="curRewardPrize" data-round="${round.id}" data-prize="${prize.id}" ${checked ? 'checked' : ''}></td>
         <td>${round.name || round.id}</td>
         <td>${prize.no || ''}</td>
         <td>${prize.name || ''}</td>
@@ -1313,7 +1511,24 @@ async function renderRewardRounds(){
         <td>${winners.map(w => w.name || '').filter(Boolean).join(', ')}</td>
       </tr>`;
     });
-  }).join('') : '<tr><td colspan="6" class="muted">No extra reward rounds yet.</td></tr>';
+  }).join('') : '<tr><td colspan="7" class="muted">尚未建立第二輪抽獎。</td></tr>';
+
+  rows.querySelectorAll('input[name="curRewardPrize"]').forEach(input => {
+    input.addEventListener('change', async () => {
+      const roundId = input.dataset.round || '';
+      const prizeId = input.dataset.prize || '';
+      if (!roundId || !prizeId) return;
+      try {
+        const res = await setCurrentRewardOnStage(roundId, prizeId);
+        setRewardStatus(`目前第二輪抽獎：${res.round.name} - ${res.prize.name}`);
+        await renderRewardRounds();
+        await renderPrizes();
+      } catch (e) {
+        console.error('[reward rounds] set current from table failed', e);
+        setRewardStatus(e?.message || '未能設定目前抽獎。', true);
+      }
+    });
+  });
 }
 
 document.getElementById('addPrize')?.addEventListener('click', async ()=>{
@@ -1336,6 +1551,7 @@ async function renderAssets(){
 
   const assets = await getAssets(eid).catch(() => ({
     banner: '',
+    landingBanner: '',
     logo: '',
     background: '',
     photos: []
@@ -1347,12 +1563,14 @@ async function renderAssets(){
   // Fill URL inputs
   if ($('assetLogoUrl'))        $('assetLogoUrl').value        = str(assets.logo);
   if ($('assetBannerUrl'))      $('assetBannerUrl').value      = str(assets.banner);
+  if ($('assetLandingBannerUrl')) $('assetLandingBannerUrl').value = str(assets.landingBanner);
   if ($('assetBackgroundUrl'))  $('assetBackgroundUrl').value  = str(assets.background);
   if ($('assetHideLogoOnDraws')) $('assetHideLogoOnDraws').checked = assets.hideLogoOnDraws === true;
 
   // Previews: prefer Data URL, fallback to URL
   const logoSrc       = str(assets.logo);
   const bannerSrc     = str(assets.banner);
+  const landingBannerSrc = str(assets.landingBanner);
   const backgroundSrc = str(assets.background);
 
   if ($('assetLogoPreview')) {
@@ -1370,6 +1588,15 @@ async function renderAssets(){
       $('assetBannerPreview').style.display = 'inline-block';
     } else {
       $('assetBannerPreview').style.display = 'none';
+    }
+  }
+
+  if ($('assetLandingBannerPreview')) {
+    if (landingBannerSrc) {
+      $('assetLandingBannerPreview').src = landingBannerSrc;
+      $('assetLandingBannerPreview').style.display = 'inline-block';
+    } else {
+      $('assetLandingBannerPreview').style.display = 'none';
     }
   }
 
@@ -1431,7 +1658,7 @@ async function renderAssets(){
 function bindAssets(){
   const $ = (id) => document.getElementById(id);
 
-  // Save button: URL + file uploads
+  // Save button: URL-only image links
   $('saveAssets')?.addEventListener('click', async () => {
     const eid = getCurrentEventId();
     if (!eid) {
@@ -1441,6 +1668,7 @@ function bindAssets(){
 
     const logoUrl       = ($('assetLogoUrl')?.value || '').trim();
     const bannerUrl     = ($('assetBannerUrl')?.value || '').trim();
+    const landingBannerUrl = ($('assetLandingBannerUrl')?.value || '').trim();
     const backgroundUrl = ($('assetBackgroundUrl')?.value || '').trim();
     const hideLogoOnDraws = $('assetHideLogoOnDraws')?.checked === true;
 
@@ -1451,6 +1679,7 @@ function bindAssets(){
     await setAssets(eid, {
       logo: logoUrl || '',
       banner: bannerUrl || '',
+      landingBanner: landingBannerUrl || '',
       background: backgroundUrl || '',
       photos,
       hideLogoOnDraws
@@ -1997,11 +2226,11 @@ function bindPrizeActions(){
     const eid = getCurrentEventId(); if(!eid) return;
     try {
       await ensureSecondPrizeRound(eid);
-      setRewardStatus('Second Prize round is ready.');
+      setRewardStatus('第二輪已準備好。');
       await renderRewardRounds();
     } catch (e) {
       console.error('[reward rounds] ensure second prize failed', e);
-      setRewardStatus(e?.message || 'Could not create Second Prize round.', true);
+      setRewardStatus(e?.message || '未能建立第二輪。', true);
     }
   });
 
@@ -2013,15 +2242,15 @@ function bindPrizeActions(){
         const eid = getCurrentEventId();
         const rounds = await getRewardRounds(eid);
         const count = Object.keys(rounds || {}).length + 1;
-        name = count === 1 ? 'Second Prize' : `Reward Round ${count}`;
+        name = count === 1 ? '第二輪抽獎' : `第二輪抽獎 ${count}`;
       }
       await addRewardRound(name);
       if (nameEl) nameEl.value = '';
-      setRewardStatus(`Reward round added: ${name}`);
+      setRewardStatus(`已新增輪次：${name}`);
       await renderRewardRounds();
     } catch (e) {
       console.error('[reward rounds] add round failed', e);
-      setRewardStatus(e?.message || 'Could not add reward round.', true);
+      setRewardStatus(e?.message || '未能新增輪次。', true);
     }
   });
 
@@ -2035,6 +2264,24 @@ function bindPrizeActions(){
     const roundId = document.getElementById('rewardRoundSelect')?.value || '';
     await setCurrentRewardSelection(roundId, ev.target.value);
     await renderRewardRounds();
+  });
+
+  document.getElementById('btnSetCurrentRewardPrize')?.addEventListener('click', async ()=>{
+    const roundId = document.getElementById('rewardRoundSelect')?.value || '';
+    const prizeId = document.getElementById('rewardPrizeSelect')?.value || '';
+    if (!roundId || !prizeId) {
+      setRewardStatus('請先選擇輪次及獎品。', true);
+      return;
+    }
+    try {
+      const res = await setCurrentRewardOnStage(roundId, prizeId);
+      setRewardStatus(`目前第二輪抽獎：${res.round.name} - ${res.prize.name}`);
+      await renderRewardRounds();
+      await renderPrizes();
+    } catch (e) {
+      console.error('[reward rounds] set current failed', e);
+      setRewardStatus(e?.message || '未能設定目前抽獎。', true);
+    }
   });
 
   document.getElementById('rewardAllowMainWinners')?.addEventListener('change', async (ev)=>{
@@ -2057,7 +2304,7 @@ function bindPrizeActions(){
     const no = document.getElementById('newRewardPrizeNo')?.value.trim();
     const quota = Math.max(1, Number(document.getElementById('newRewardPrizeQuota')?.value || 1));
     if (!name) {
-      setRewardStatus('Enter a reward prize name first.', true);
+      setRewardStatus('請先輸入獎品名稱。', true);
       return;
     }
     try {
@@ -2072,11 +2319,11 @@ function bindPrizeActions(){
       document.getElementById('newRewardPrizeName').value = '';
       document.getElementById('newRewardPrizeNo').value = '';
       document.getElementById('newRewardPrizeQuota').value = '1';
-      setRewardStatus('Reward prize added.');
+      setRewardStatus('已新增第二輪獎品。');
       await renderRewardRounds();
     } catch (e) {
       console.error('[reward rounds] add prize failed', e);
-      setRewardStatus(e?.message || 'Could not add reward prize.', true);
+      setRewardStatus(e?.message || '未能新增第二輪獎品。', true);
     }
   });
 
@@ -2089,13 +2336,13 @@ function bindPrizeActions(){
       await setCurrentRewardSelection(roundId, prizeId);
       const res = await drawRewardRoundPrize(batchSize);
       const names = (res.batch || []).map(p => p.name).filter(Boolean).join(', ');
-      setRewardStatus(`Draw complete: ${names || 'no winners'}`);
+      setRewardStatus(`抽獎完成：${names || '未有得獎者'}`);
       await renderRewardRounds();
       await renderRoster();
     } catch (e) {
       console.error('[reward rounds] draw failed', e);
-      alert(`[Reward Round Error]\n${e?.message || String(e)}`);
-      setRewardStatus(e?.message || 'Could not draw reward round.', true);
+      alert(`[第二輪抽獎錯誤]\n${e?.message || String(e)}`);
+      setRewardStatus(e?.message || '未能完成第二輪抽獎。', true);
     }
   });
 
@@ -2277,30 +2524,49 @@ document.getElementById('btnAddPoll')?.addEventListener('click', async () => {
 
 
 export async function renderAll(){
-  await renderEventList();
-  await renderEventInfo();
-  await renderRoster();
-  await renderPrizes();
-  await renderRewardRounds();
-  await renderQuestions();
-  await renderAssets();
-  await renderGameBooths();
-  await renderPolls();
-  await renderPollManager();   // keep poll manager in sync when switching events
-  await bindPollPicker();      // refresh poll picker options for current event
+  const renderStep = async (name, fn) => {
+    try { await fn(); }
+    catch (error) { console.error(`[CMS] ${name} failed`, error); }
+  };
+  await renderStep('renderEventList', renderEventList);
+  await renderStep('renderEventInfo', renderEventInfo);
+  await renderStep('renderRoster', renderRoster);
+  await renderStep('renderPrizes', renderPrizes);
+  await renderStep('renderRewardRounds', renderRewardRounds);
+  await renderStep('renderQuestions', renderQuestions);
+  await renderStep('renderAssets', renderAssets);
+  await renderStep('renderGameBooths', renderGameBooths);
+  await renderStep('renderPolls', renderPolls);
+  await renderStep('renderPollManager', renderPollManager);   // keep poll manager in sync when switching events
+  await renderStep('bindPollPicker', bindPollPicker);      // refresh poll picker options for current event
   updateExternalLinks();
 }
 export async function bootCMS(){
-  
+  document.body.classList.add('cms-auth-pending');
+
+  // Authenticate before loading or revealing the CMS.
+  await loadUsersFromDB();
+  if (!bindLogin()) return;
+  bindLogout();
+
   // pick event
   const u = new URL(location.href);
   const eid = u.searchParams.get('event');
-  const list = await listEvents();
-  if (eid && list.some(e => e.id === eid)) setCurrentEventId(eid);
-  else if (list[0]) setCurrentEventId(list[0].id);
-
-  // load users from RTDB before rendering UI/login
-  await loadUsersFromDB();
+  let list = [];
+  try {
+    list = await listEvents();
+    showFirebaseStatus('Database connected');
+  } catch (error) {
+    console.error('[CMS] initial Firebase event read failed', error);
+    showFirebaseStatus(`Firebase read failed: ${getFirebaseDebugUrl('/events_index')} | ${error?.message || String(error)}`, true);
+    const el = document.getElementById('eventList');
+    if (el) {
+      el.innerHTML = `<div class="muted" style="color:#ff5a67">Firebase event list read failed: ${error?.message || String(error)}</div>`;
+    }
+  }
+  const allowedList = filterEventsForActiveUser(Array.isArray(list) ? list : []);
+  if (eid && allowedList.some(e => e.id === eid)) setCurrentEventId(eid);
+  else if (!canAccessEvent(getCurrentEventId())) setCurrentEventId(allowedList[0]?.id || null);
 
   // small helper: call a binder if it exists; await if it returns a promise
   const maybe = async (fn) => {
@@ -2331,7 +2597,6 @@ export async function bootCMS(){
   await maybe(bindUsers);
   renderUsersUI();
   applyRoleGuard();
-  bindLogin();
   try { await renderPollManager(); } catch (e) { console.error(e); }
 
 

@@ -146,7 +146,7 @@
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
   <script type="module">
     import { setCurrentEventId, getPrizes, getCurrentPrizeIdRemote } from './src/core_firebase.js';
-    import { performDraw, clearScreenResults } from './src/stage_draw_logic.js';
+    import { performDraw, clearScreenResults, drawState } from './src/stage_draw_logic.js';
     import { renderStageDraw } from './src/stage_draw_ui.js';
     import { renderBatchGrid as renderBatchGridCore, fitWinnerCardText } from './src/stage_draw_logic.js';
     import { setCurrentPrize } from './src/stage_prizes_firebase.js';
@@ -234,10 +234,18 @@
 
     await populatePrizeSelect();
 
-    async function syncStageState(){
+    async function syncStageState(stateOverride){
       try{
         if (!eid) return;
-        const state = await FB.get(`/events/${eid}/ui/stageState`).catch(()=>null);
+        const state = stateOverride !== undefined
+          ? stateOverride
+          : await FB.get(`/events/${eid}/ui/stageState`).catch(()=>null);
+        if (state?.mode === 'clear') {
+          drawState.lastBatch = [];
+          renderBatchGridCore(document.getElementById('stageGrid'), [], 'tablet');
+          fitWinnerCardText(document.getElementById('stageGrid'), fitOpts);
+          return;
+        }
         if (!state || !state.winners) return;
         const winnersArray = Array.isArray(state.winners) ? state.winners : Object.values(state.winners);
         renderBatchGridCore(document.getElementById('stageGrid'), winnersArray, 'tablet');
@@ -245,9 +253,9 @@
       }catch(_){}
     }
 
-    // initial sync + poll stageState to stay in sync (use tablet mode to keep reroll buttons)
+    // initial sync + change stream to stay in sync (use tablet mode to keep reroll buttons)
     await syncStageState();
-    setInterval(syncStageState, 1000);
+    FB.listen?.(`/events/${eid}/ui/stageState`, (state) => syncStageState(state), { fallbackMs: 5000 });
   </script>
   <script type="module" src="./src/public_stage_boot.js"></script>
 </body>

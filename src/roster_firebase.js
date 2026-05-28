@@ -86,6 +86,23 @@ export function handleImportCSV(file, cb){
 }
 
 // -------- Export --------
+function formatHongKongDateTime(value, fallbackText = ''){
+  if (!value && fallbackText) return fallbackText;
+  if (!value) return '';
+  const date = typeof value === 'number' ? new Date(value) : new Date(value);
+  if (Number.isNaN(date.getTime())) return fallbackText || '';
+  return new Intl.DateTimeFormat('zh-HK', {
+    timeZone: 'Asia/Hong_Kong',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).format(date);
+}
+
 export async function exportCSV(){
   const eid = getCurrentEventId();
   const [info, people, prizes, rewardRounds] = await Promise.all([
@@ -121,7 +138,7 @@ export async function exportCSV(){
   });
 
   const rows = [
-    ['Code', labelPhone, 'Name', labelDept, 'Table', 'Seat', 'Present', 'LuckyPrize', ...roundEntries.map(r => r.name)],
+    ['Code', labelPhone, 'Name', labelDept, 'Table', 'Seat', 'Present', '首次登入時間', '最後登入時間', 'LuckyPrize', ...roundEntries.map(r => r.name)],
     ...people.map(p=>[
       p.code || '',
       p.phone || '',
@@ -130,6 +147,8 @@ export async function exportCSV(){
       p.table || '',
       p.seat || '',
       p.checkedIn ? 1 : 0,
+      p.firstLoginAtHK || formatHongKongDateTime(p.firstLoginAt),
+      p.lastLoginAtHK || formatHongKongDateTime(p.lastLoginAt),
       prizeMap.get(p.phone ? `phone:${p.phone}` : `${p.name}||${p.dept||''}`) || p.prize || '',
       ...roundEntries.map(r => (p.rewardRounds && p.rewardRounds[r.id]) || '')
     ])

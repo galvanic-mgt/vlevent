@@ -14,15 +14,27 @@
       padding:4px 8px;
       border:1px solid #e3d61633;
       border-radius:999px;margin:2px}.photo{display:inline-block;margin:6px}
+    body.cms-locked,body.cms-auth-pending{overflow:hidden}
+    body.cms-locked header,body.cms-locked main,body.cms-auth-pending header,body.cms-auth-pending main{display:none!important}
+    .login-gate{position:fixed;inset:0;z-index:99999;display:none;align-items:center;justify-content:center;padding:24px;background:radial-gradient(circle at top,#18233d,#070b12 62%);color:#fff}
+    body.cms-auth-pending .login-gate{display:none!important}
+    body.cms-locked .login-gate{display:flex}
+    .login-card{width:min(420px,100%);display:flex;flex-direction:column;gap:14px;background:#121a2b;border:1px solid rgba(255,255,255,.16);border-radius:8px;padding:24px;box-shadow:0 24px 80px rgba(0,0,0,.45)}
+    .login-brand{margin:0 0 2px;text-align:center;font-size:42px;line-height:1;font-weight:900;letter-spacing:0;text-transform:uppercase;background:linear-gradient(135deg,#fff 0%,#7ee7ff 42%,#ffd166 100%);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 16px 40px rgba(62,221,255,.22)}
+    .login-card h3{margin:0 0 4px;font-size:24px}
+    .login-card label{display:flex;flex-direction:column;gap:6px}
+    .login-card input{width:100%;box-sizing:border-box}
+    .login-error{min-height:20px;color:#ff6b75;font-size:14px}
       </style>
       </head>
-<body>
-<div id="loginGate" class="overlay" style="display:none"><form id="loginForm" class="card" style="min-width:320px; background:#121a2b; padding:16px"><h3 style="margin-top:0">登入</h3><label>帳號 <input id="loginUser" placeholder="admin"/></label><label>密碼 <input id="loginPass" type="password" placeholder="admin"/></label><div class="bar" style="margin-top:12px"><button class="btn primary" type="submit">進入</button></div></form></div>
+<body class="cms-auth-pending">
+<div id="loginGate" class="login-gate" aria-modal="true" role="dialog"><form id="loginForm" class="login-card"><div class="login-brand">VLEVENT CMS</div><h3>登入後台</h3><label>帳號 <input id="loginUser" autocomplete="username" placeholder="administrator"/></label><label>密碼 <input id="loginPass" type="password" autocomplete="current-password" placeholder="administrator"/></label><div id="loginError" class="login-error" aria-live="polite"></div><button class="btn primary" type="submit">登入</button></form></div>
 <header><div class="container row"><div class="tabs"><button class="btn primary active" type="button">後台 CMS</button></div>
   <div class="bar" style="margin-left:auto"><button id="themeToggle" class="btn small">☀️ Normal Mode</button>
 <a class="btn btn-public" href="#" id="btnPublicBoard" role="button">Public Board ↗</a>
 <a class="btn btn-tablet" href="./tablet.html" target="_blank" role="button">Tablet View ↗</a>
 <a class="btn primary" id="btnLanding" href="#" role="button">Landing ↗</a>
+<button id="btnLogout" class="btn small" type="button">登出</button>
 </div></div>
 </header>
 <main class="container" id="cmsView"><div class="cms-grid">
@@ -31,6 +43,7 @@
 <button class="nav-item active" data-target="pageEvent">活動資料</button>
 <button class="nav-item" data-target="pageRoster">名單</button>
 <button class="nav-item" data-target="pagePrizes">獎品</button>
+<button class="nav-item" data-target="pageRewardRounds">第二輪抽獎</button>
 <button class="nav-item" data-target="pageStageDraw">後台抽獎</button>
 <!-- 抽問 tab hidden -->
 <button class="nav-item" data-target="pagePoll">投票</button>
@@ -115,6 +128,8 @@
           <th data-key="code"      data-sortable="true">代碼</th>
           <th data-key="table"     data-sortable="true" style="width:80px">枱號</th>
           <th data-key="seat"      data-sortable="true" style="width:80px">座位</th>
+          <th data-key="firstLoginAt" data-sortable="true">首次登入時間</th>
+          <th data-key="lastLoginAt" data-sortable="true">最後登入時間</th>
           <th data-key="prize"     data-sortable="true">獎品</th>
           <th style="width:220px">操作</th>
         </tr>
@@ -129,24 +144,7 @@
 
    <div class="stage-controls">
     <div class="bar" style="gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
-      <label>Draw mode
-        <select id="stageDrawMode">
-          <option value="main">Main lucky draw</option>
-          <option value="reward">Extra reward round</option>
-        </select>
-      </label>
-      <span id="stageRewardControls" class="bar" style="gap:8px;flex-wrap:wrap;align-items:center;display:none">
-        <button id="stageEnsureSecondPrize" class="btn primary" type="button">Create / Load Second Prize</button>
-        <label>Round <select id="stageRewardRoundSelect"></select></label>
-        <label>Prize <select id="stageRewardPrizeSelect"></select></label>
-        <input id="stageRewardRoundName" placeholder="New round name" style="min-width:150px">
-        <button id="stageAddRewardRound" class="btn" type="button">+ Round</button>
-        <input id="stageRewardPrizeName" placeholder="Reward prize name" style="min-width:150px">
-        <input id="stageRewardPrizeNo" placeholder="No." style="width:80px">
-        <label>Quota <input id="stageRewardPrizeQuota" type="number" min="1" value="1" style="width:70px"></label>
-        <button id="stageAddRewardPrize" class="btn" type="button">+ Prize</button>
-      </span>
-      <span id="stageRewardStatus" class="muted" style="font-size:13px"></span>
+      <span class="muted" style="font-size:13px">Main lucky draw only. Use the Second Round tab for extra reward rounds.</span>
     </div>
     <div id="drawBtns" class="btns">
       批次：
@@ -240,34 +238,38 @@
    <tbody id="prizeRows"></tbody>
  </table>
 <h4>得獎名單</h4><ul id="winnersList"></ul>
+</section>
+
+<section class="card subpage" id="pageRewardRounds" style="display:none">
 <div id="rewardRoundPanel" class="card" style="margin-top:16px">
-  <h3>Extra Reward Rounds</h3>
+  <h3>第二輪抽獎</h3>
   <p class="muted" style="font-size:13px;margin-top:0">
-    First/main draw remains unchanged. Extra rounds start with Second Prize and write to each person's rewardRounds column.
+    管理第二輪或額外抽獎；第一輪主抽獎不會受影響，結果會寫入每位參加者的第二輪紀錄。
   </p>
   <div class="bar" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
-    <button id="btnEnsureSecondPrize" class="btn primary" type="button">Create / Load Second Prize</button>
-    <input id="newRewardRoundName" placeholder="New round name" style="min-width:180px">
-    <button id="btnAddRewardRound" class="btn" type="button">+ Add round</button>
+    <button id="btnEnsureSecondPrize" class="btn primary" type="button">建立 / 載入第二輪</button>
+    <input id="newRewardRoundName" placeholder="新輪次名稱" style="min-width:180px">
+    <button id="btnAddRewardRound" class="btn" type="button">+ 新增輪次</button>
   </div>
   <div class="bar" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
-    <label>Round <select id="rewardRoundSelect"></select></label>
-    <label>Prize <select id="rewardPrizeSelect"></select></label>
-    <label><input id="rewardAllowMainWinners" type="checkbox" checked> Include first-round winners</label>
-    <label><input id="rewardAllowDuplicateWithinRound" type="checkbox"> Allow duplicate within this round</label>
+    <label>輪次 <select id="rewardRoundSelect"></select></label>
+    <label>獎品 <select id="rewardPrizeSelect"></select></label>
+    <button id="btnSetCurrentRewardPrize" class="btn primary" type="button">設為目前抽獎</button>
+    <label><input id="rewardAllowMainWinners" type="checkbox" checked> 包括第一輪得獎者</label>
+    <label><input id="rewardAllowDuplicateWithinRound" type="checkbox"> 允許本輪重複得獎</label>
   </div>
   <div class="bar" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
-    <input id="newRewardPrizeName" placeholder="Reward prize name" style="min-width:180px">
-    <input id="newRewardPrizeNo" placeholder="No." style="width:90px">
-    <label>Quota <input id="newRewardPrizeQuota" type="number" min="1" value="1" style="width:90px"></label>
-    <button id="btnAddRewardPrize" class="btn" type="button">+ Add prize to round</button>
-    <label>Draw <input id="rewardBatchSize" type="number" min="1" max="10" value="1" style="width:70px"></label>
-    <button id="btnDrawRewardRound" class="btn primary" type="button">Draw extra round</button>
+    <input id="newRewardPrizeName" placeholder="第二輪獎品名稱" style="min-width:180px">
+    <input id="newRewardPrizeNo" placeholder="編號" style="width:90px">
+    <label>名額 <input id="newRewardPrizeQuota" type="number" min="1" value="1" style="width:90px"></label>
+    <button id="btnAddRewardPrize" class="btn" type="button">+ 新增本輪獎品</button>
+    <label>抽出 <input id="rewardBatchSize" type="number" min="1" max="10" value="1" style="width:70px"></label>
+    <button id="btnDrawRewardRound" class="btn primary" type="button">抽第二輪</button>
   </div>
   <div id="rewardRoundStatus" class="muted" style="min-height:20px"></div>
   <div style="overflow:auto;margin-top:10px">
     <table class="fullwidth">
-      <thead><tr><th>Round</th><th>No.</th><th>Prize</th><th>Quota</th><th>Used</th><th>Winners</th></tr></thead>
+      <thead><tr><th>使用中</th><th>輪次</th><th>編號</th><th>獎品</th><th>名額</th><th>已抽出</th><th>得獎者</th></tr></thead>
       <tbody id="rewardRoundRows"></tbody>
     </table>
   </div>
@@ -335,6 +337,7 @@
     <!-- Logo -->
     <div>
       <h4>Logo</h4>
+      <div class="muted" style="font-size:12px;margin:-4px 0 8px">建議尺寸：160 x 160px</div>
       <label>Logo URL
         <input id="assetLogoUrl" placeholder="https://example.com/logo.png">
       </label>
@@ -351,6 +354,7 @@
     <!-- Banner -->
     <div>
       <h4>Banner</h4>
+      <div class="muted" style="font-size:12px;margin:-4px 0 8px">建議尺寸：1600 x 160px</div>
       <label>Banner URL
         <input id="assetBannerUrl" placeholder="https://example.com/banner.jpg">
       </label>
@@ -360,9 +364,23 @@
       </div>
     </div>
 
+    <!-- Landing Banner -->
+    <div>
+      <h4>Landing 頁面 Banner</h4>
+      <div class="muted" style="font-size:12px;margin:-4px 0 8px">建議尺寸：500 x 150px</div>
+      <label>Landing Banner URL
+        <input id="assetLandingBannerUrl" placeholder="https://example.com/landing-banner.jpg">
+      </label>
+      <div style="margin-top:8px">
+        <div class="muted" style="font-size:12px">預覽：</div>
+        <img id="assetLandingBannerPreview" class="photo" style="max-width:100%;display:none" alt="Landing Banner 預覽">
+      </div>
+    </div>
+
     <!-- Background -->
     <div>
       <h4>背景 Background</h4>
+      <div class="muted" style="font-size:12px;margin:-4px 0 8px">建議尺寸：1920 x 1080px</div>
       <label>背景 URL
         <input id="assetBackgroundUrl" placeholder="https://example.com/background.jpg">
       </label>
@@ -412,6 +430,12 @@
       <label>名稱 <input id="userName" placeholder="使用者名稱"></label>
     </div>
     <div>
+      <label>登入帳號 <input id="userLogin" autocomplete="off" placeholder="username"></label>
+    </div>
+    <div>
+      <label>登入密碼 <input id="userPassword" type="password" autocomplete="new-password" placeholder="password"></label>
+    </div>
+    <div>
       <label>角色
         <select id="userRole">
           <option value="master">Master（全部功能）</option>
@@ -419,13 +443,17 @@
         </select>
       </label>
     </div>
+    <div>
+      <label>可管理活動 ID <input id="userEvents" placeholder="留空 = 全部；多個用逗號分隔"></label>
+    </div>
     <button id="btnAddUser" class="btn">+ 新增</button>
+    <span id="userStatus" class="muted" style="min-height:20px"></span>
   </div>
 
   <div style="margin-top:12px">
     <h4>使用者列表</h4>
     <table class="fullwidth">
-      <thead><tr><th>名稱</th><th>角色</th><th>操作</th></tr></thead>
+      <thead><tr><th>名稱</th><th>角色</th><th>可管理活動</th><th>操作</th></tr></thead>
       <tbody id="userRows"></tbody>
     </table>
   </div>
@@ -444,7 +472,6 @@
   startApp();
 </script>
 
-<script type="module" src="./src/reward_rounds_cms_bind.js?v=20260430"></script>
 
 <script type="module">
   import { getCurrentEventId } from './src/core_firebase.js';

@@ -89,11 +89,17 @@ async function refreshCurrentPrize(eid) {
     const nameEl  = document.getElementById('stagePrizeName');
     const leftEl  = document.getElementById('stagePrizeLeft');
 
+    if (stageState && stageState.mode === 'clear') {
+      if (nameEl) nameEl.textContent = '—';
+      if (leftEl) leftEl.textContent = '—';
+      return;
+    }
+
     if (stageState && stageState.mode === 'reward') {
       const round = rewardRounds?.[stageState.currentRoundId] || {};
       const prize = (round.prizes || []).find(p => p && p.id === stageState.currentPrizeId) || null;
       if (nameEl) {
-        const roundName = stageState.currentRoundName || round.name || 'Reward Round';
+        const roundName = stageState.currentRoundName || round.name || '第二輪抽獎';
         const prizeName = stageState.currentPrizeName || prize?.name || '';
         nameEl.textContent = prizeName ? `${roundName} - ${prizeName}` : roundName;
       }
@@ -159,9 +165,18 @@ async function boot() {
   await refreshAssets(eid);
   await refreshCurrentPrize(eid);
 
-  // Poll updates
-  setInterval(() => refreshCurrentPrize(eid), 1500);
-  setInterval(() => refreshAssets(eid), 5000);
+  // Change streams keep public screens live without constant Firebase polling.
+  if (FB?.listen) {
+    FB.listen(`/events/${eid}/ui/stageState`, () => refreshCurrentPrize(eid), { fallbackMs: 5000 });
+    FB.listen(`/events/${eid}/currentPrizeId`, () => refreshCurrentPrize(eid), { fallbackMs: 5000 });
+    FB.listen(`/events/${eid}/prizes`, () => refreshCurrentPrize(eid), { fallbackMs: 5000 });
+    FB.listen(`/events/${eid}/ui/rewardRounds`, () => refreshCurrentPrize(eid), { fallbackMs: 5000 });
+    FB.listen(`/events/${eid}/logo`, () => refreshAssets(eid), { fallbackMs: 15000 });
+    FB.listen(`/events/${eid}/banner`, () => refreshAssets(eid), { fallbackMs: 15000 });
+    FB.listen(`/events/${eid}/background`, () => refreshAssets(eid), { fallbackMs: 15000 });
+    FB.listen(`/events/${eid}/photos`, () => refreshAssets(eid), { fallbackMs: 15000 });
+    FB.listen(`/events/${eid}/assetSettings`, () => refreshAssets(eid), { fallbackMs: 15000 });
+  }
 
   // Allow manual/on-demand asset refresh (reduces bandwidth)
   if (typeof window !== 'undefined') {
