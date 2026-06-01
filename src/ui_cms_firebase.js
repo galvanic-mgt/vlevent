@@ -97,6 +97,16 @@ function ensureLandingQR(eid) {
         </div>
         <div id="landingQR" style="margin-top:8px"></div>
       </div>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.12)">
+        <label style="display:flex;flex-direction:column;gap:6px">
+          <span>LIVE PHOTO link</span>
+          <input id="landingLivePhotoLink" placeholder="https://example.com/live-photo" />
+        </label>
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button id="saveLandingLivePhotoLink" class="btn primary" type="button">Save LIVE PHOTO link</button>
+          <span id="landingLivePhotoStatus" class="muted"></span>
+        </div>
+      </div>
     `;
     page.appendChild(card);
   }
@@ -139,6 +149,31 @@ function ensureLandingQR(eid) {
       // ignore
     }
   });
+
+  const saveLivePhotoBtn = document.getElementById('saveLandingLivePhotoLink');
+  if (saveLivePhotoBtn && !saveLivePhotoBtn.dataset.bound) {
+    saveLivePhotoBtn.dataset.bound = '1';
+    saveLivePhotoBtn.addEventListener('click', async () => {
+      const activeEid = getCurrentEventId();
+      if (!activeEid) return;
+      const input = document.getElementById('landingLivePhotoLink');
+      const status = document.getElementById('landingLivePhotoStatus');
+      const value = (input?.value || '').trim();
+      if (status) {
+        status.textContent = 'Saving...';
+        status.style.color = '';
+      }
+      try {
+        await FB.patch(`/events/${activeEid}/info`, { landingLivePhotoLink: value });
+        if (status) status.textContent = value ? 'LIVE PHOTO link saved.' : 'LIVE PHOTO link cleared.';
+      } catch (err) {
+        if (status) {
+          status.textContent = `Save failed: ${err?.message || String(err)}`;
+          status.style.color = '#ff5a67';
+        }
+      }
+    });
+  }
 }
 
 function ensurePreEventApplyQR(eid) {
@@ -472,7 +507,7 @@ function applyRoleGuard(){
   const allowAll = role === ROLE_MASTER;
   document.querySelectorAll('#cmsNav .nav-item').forEach(btn=>{
     const target = btn.dataset.target;
-    if (!allowAll && target && !['pageRoster','pageUsers'].includes(target)) {
+    if (!allowAll && target && !['pageRoster'].includes(target)) {
       btn.style.display = 'none';
     } else {
       btn.style.display = '';
@@ -482,7 +517,7 @@ function applyRoleGuard(){
   // Hide pages for roster-only role
   if (!allowAll) {
     document.querySelectorAll('.subpage').forEach(sec=>{
-      if (!['pageRoster','pageUsers'].includes(sec.id)) sec.style.display = 'none';
+      if (!['pageRoster'].includes(sec.id)) sec.style.display = 'none';
     });
     const rosterBtn = document.querySelector('#cmsNav .nav-item[data-target="pageRoster"]');
     rosterBtn?.classList.add('active');
@@ -840,6 +875,8 @@ t('metaClient',meta.client);
 { const el=document.getElementById('metaListed');
   if(el) el.checked = meta.listed!==false; }
     ensureLandingQR(eid);
+    t('landingLivePhotoLink', info.landingLivePhotoLink);
+    { const el=document.getElementById('landingLivePhotoStatus'); if(el) el.textContent = ''; }
     ensurePreEventApplyQR(eid);
 }
 
@@ -1731,11 +1768,7 @@ function normalizeGameBooths(raw){
 
 async function getGameBooths(eid){
   const raw = await FB.get(`/events/${eid}/gameBooths`).catch(() => null);
-  const list = normalizeGameBooths(raw);
-  if (list.length) return list;
-  const defaults = defaultGameBooths();
-  await FB.put(`/events/${eid}/gameBooths`, defaults);
-  return defaults;
+  return normalizeGameBooths(raw);
 }
 
 async function setGameBooths(eid, booths){

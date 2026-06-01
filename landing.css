@@ -72,6 +72,7 @@ body{
 .lp-booth-status-row:last-child{border-bottom:0}
 .lp-booth-participated{color:#38d26b;font-weight:800}
 .lp-booth-not-participated{color:#ff5a67;font-weight:800}
+.lp-live-photo-link{margin-top:8px;text-align:center}
 
 @media (max-width:520px){
   .lp-form{grid-template-columns:1fr}

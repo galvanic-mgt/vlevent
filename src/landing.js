@@ -394,20 +394,20 @@ async function loadEventHeader(eid) {
   const parkingTitleEl = document.getElementById("parkingTitle");
 
   const defaultCheckinTitle = `到場報到（輸入${labelPhone}或${labelDept}）`;
-  const defaultCheckinLabel = `${labelPhone} / ${labelDept}`;
-  const defaultCheckinPlaceholder = `請輸入你的${labelPhone}或${labelDept}`;
+  const defaultCheckinLabel = "***";
+  const defaultCheckinPlaceholder = "(請輸入電話 Mobile No.)";
 
   if (titleEl) titleEl.textContent = pick(info.landingCheckinTitle, defaultCheckinTitle);
   if (labelEl) labelEl.textContent = pick(info.landingCheckinLabel, defaultCheckinLabel);
   if (inputEl) inputEl.placeholder = pick(info.landingCheckinPlaceholder, defaultCheckinPlaceholder);
   if (btnEl) btnEl.textContent = pick(info.landingCheckinButton, "報到");
   if (seatTitleEl) seatTitleEl.textContent = pick(info.landingSeatTitle, "歡迎！你的座位安排");
-  if (tipTitleEl) tipTitleEl.textContent = pick(info.landingTipTitle, "活動提示");
+  if (tipTitleEl) tipTitleEl.textContent = pick(info.landingTipTitle, "歡迎蒞臨 Welcome !");
   if (tipBodyEl) tipBodyEl.textContent = pick(
     info.landingTipBody,
     "請根據場內指示入座，如有任何問題，歡迎向現場工作人員查詢。"
   );
-  if (transportTitleEl) transportTitleEl.textContent = pick(info.landingTransportTitle, "交通資訊");
+  if (transportTitleEl) transportTitleEl.textContent = pick(info.landingTransportTitle, "今晚設有大抽獎，祝好運!");
   if (busTitleEl) busTitleEl.textContent = pick(info.landingBusTitle, "巴士");
   if (trainTitleEl) trainTitleEl.textContent = pick(info.landingTrainTitle, "地鐵 / 火車");
   if (parkingTitleEl) parkingTitleEl.textContent = pick(info.landingParkingTitle, "泊車");
@@ -420,6 +420,13 @@ async function loadEventHeader(eid) {
     const url = info.mapUrl || "";
     $("mapBtn").style.display = url ? "inline-flex" : "none";
     if (url) $("mapBtn").href = url;
+  }
+
+  const livePhotoButton = document.getElementById("livePhotoLinkButton");
+  if (livePhotoButton) {
+    const livePhotoLink = String(info.landingLivePhotoLink || "").trim();
+    livePhotoButton.style.display = livePhotoLink ? "inline-flex" : "none";
+    if (livePhotoLink) livePhotoButton.href = livePhotoLink;
   }
   const hasNotes = Boolean((info.notes || "").trim());
   const hasMap = Boolean((info.mapUrl || "").trim());

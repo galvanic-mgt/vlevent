@@ -2,7 +2,7 @@
   <head>
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>VLevent Lucky Draw Program Powered by Galvanic</title>
+    <title>VLevent Lucky draw</title>
     <link rel="stylesheet" href="./styles.css"/>
     <link rel="icon" href="data:,">
     <style>body{font-size:110%;}
@@ -64,13 +64,13 @@
 </div>
 <label>Landing 頁面標題 <input id="landingPageTitle" placeholder="活動報到 · 現場參加者入口"/></label>
 <label>到場報到標題 <input id="landingCheckinTitle" placeholder="到場報到（輸入電話或代號）"/></label>
-<label>到場報到欄位標題 <input id="landingCheckinLabel" placeholder="電話 / 代號"/></label>
-<label>到場報到輸入提示 <input id="landingCheckinPlaceholder" placeholder="請輸入你的電話或報到代號"/></label>
+<label>到場報到欄位標題 <input id="landingCheckinLabel" placeholder="***"/></label>
+<label>到場報到輸入提示 <input id="landingCheckinPlaceholder" placeholder="(請輸入電話 Mobile No.)"/></label>
 <label>到場報到按鈕文字 <input id="landingCheckinButton" placeholder="報到"/></label>
 <label>座位標題 <input id="landingSeatTitle" placeholder="歡迎！你的座位安排"/></label>
-<label>活動提示標題 <input id="landingTipTitle" placeholder="活動提示"/></label>
+<label>活動提示標題 <input id="landingTipTitle" placeholder="歡迎蒞臨 Welcome !"/></label>
 <label>活動提示內容 <textarea id="landingTipBody" rows="3" placeholder="請根據場內指示入座，如有任何問題，歡迎向現場工作人員查詢。"></textarea></label>
-<label>交通資訊標題 <input id="landingTransportTitle" placeholder="交通資訊"/></label>
+<label>交通資訊標題 <input id="landingTransportTitle" placeholder="今晚設有大抽獎，祝好運!"/></label>
 <label>巴士標題 <input id="landingBusTitle" placeholder="巴士"/></label>
 <label>地鐵/火車標題 <input id="landingTrainTitle" placeholder="地鐵 / 火車"/></label>
 <label>泊車標題 <input id="landingParkingTitle" placeholder="泊車"/></label>
@@ -410,8 +410,8 @@
 <section class="card subpage" id="pageGameBooths" style="display:none">
   <h3>遊戲攤位 QR Code (Game Booths QR Code)</h3>
   <p class="muted" style="margin-bottom:12px">
-    預設建立 5 個遊戲攤位，可按需要新增或刪除。每個攤位會產生專用 QR Code，參加者在訪客頁面報到後可開啟相機掃描。<br>
-    Creates 5 game booths by default. You can add or delete booths as needed. Each booth generates its own QR Code for visitors to scan after check-in.
+    不會預設建立遊戲攤位，可按需要新增或刪除。每個攤位會產生專用 QR Code，參加者在訪客頁面報到後可開啟相機掃描。<br>
+    No game booths are created automatically. Add booths only when needed; each booth generates its own QR Code for visitors to scan after check-in.
   </p>
   <div class="bar" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
     <button id="btnAddGameBooth" class="btn primary" type="button">+ 新增攤位 (Add Booth)</button>
