@@ -31,6 +31,10 @@ import { FB } from './fb.js';
 
 // --- Helpers (IDs / links / QR / chips) ---
 function makeId(prefix='p'){ return prefix + Math.random().toString(36).slice(2,8); }
+function fileTimestamp(date = new Date()){
+  const pad = n => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
+}
 
 // --- Current-poll helpers (non-destructive additions) ---
 function linkTo(file, eid, pid){
@@ -273,17 +277,42 @@ function bindLandingButton(){
 function bindExternalLinks(){
   const pub = document.getElementById('btnPublicBoard');
   const tab = document.querySelector('a[href$="tablet.html"]');
+  ensureVotingControlButton();
   const sync = ()=>updateExternalLinks(pub, tab);
   sync();
   window.addEventListener('popstate', sync);
+}
+function ensureVotingControlButton(){
+  if (document.getElementById('btnVotingControl')) return;
+  const bar = document.querySelector('header .bar');
+  if (!bar) return;
+  const btn = document.createElement('a');
+  btn.id = 'btnVotingControl';
+  btn.className = 'btn';
+  btn.target = '_blank';
+  btn.rel = 'noopener';
+  btn.textContent = 'Voting Control';
+  const publicBtn = document.getElementById('btnPublicBoard');
+  if (publicBtn?.nextSibling) bar.insertBefore(btn, publicBtn.nextSibling);
+  else bar.appendChild(btn);
 }
 function updateExternalLinks(pub, tab){
   const eid = getCurrentEventId();
   if (!eid) return;
   const pubEl = pub || document.getElementById('btnPublicBoard');
   const tabEl = tab || document.querySelector('a[href$="tablet.html"]');
+  const voteControlEl = document.getElementById('btnVotingControl');
+  const luckyV2ControlEl = document.getElementById('btnLuckyV2Control');
+  const luckyV2PublicEl = document.getElementById('btnLuckyV2Public');
+  const luckyV2LinksEl = document.getElementById('luckyV2Links');
   if (pubEl) pubEl.href = publicBoardLink(eid);
   if (tabEl) tabEl.href = tabletLink(eid);
+  if (voteControlEl) voteControlEl.href = votingControlLink(eid);
+  const v2Control = luckyV2ControlLink(eid);
+  const v2Public = luckyV2PublicLink(eid);
+  if (luckyV2ControlEl) luckyV2ControlEl.href = v2Control;
+  if (luckyV2PublicEl) luckyV2PublicEl.href = v2Public;
+  if (luckyV2LinksEl) luckyV2LinksEl.innerHTML = `Control: <a href="${v2Control}" target="_blank" rel="noopener">${v2Control}</a><br>Public: <a href="${v2Public}" target="_blank" rel="noopener">${v2Public}</a>`;
 }
 
 
@@ -331,6 +360,29 @@ function tabletLink(eid) {
   u.pathname = (u.pathname.replace(/[^/]+$/, '') || '/') + 'tablet.html';
   u.search = `?event=${encodeURIComponent(eid)}`;
   return u.href;
+}
+function votingControlLink(eid) {
+  const u = new URL(location.href);
+  u.pathname = (u.pathname.replace(/[^/]+$/, '') || '/') + 'voting_control.html';
+  u.search = `?event=${encodeURIComponent(eid)}`;
+  return u.href;
+}
+function localServerLink(file, eid) {
+  if (location.protocol === 'file:') {
+    const u = new URL(`http://127.0.0.1:8000/${file}`);
+    u.search = `?event=${encodeURIComponent(eid)}`;
+    return u.href;
+  }
+  const u = new URL(location.href);
+  u.pathname = (u.pathname.replace(/[^/]+$/, '') || '/') + file;
+  u.search = `?event=${encodeURIComponent(eid)}`;
+  return u.href;
+}
+function luckyV2ControlLink(eid) {
+  return localServerLink('lucky_v2.html', eid);
+}
+function luckyV2PublicLink(eid) {
+  return localServerLink('lucky_v2_public.html', eid);
 }
 
 function showPollQR(link){
@@ -701,8 +753,10 @@ function bindLogin(){
     doLogin(u,p);
     });
   }
-  // always require login unless a valid session exists
-  if (sessionStorage.getItem(SESSION_KEY) === '1' && getActiveUser()?.id) {
+  // Use the persisted active user as the login record. sessionStorage can disappear
+  // between tabs/reloads, but logout clears ACTIVE_KEY.
+  if (getActiveUser()?.id) {
+    sessionStorage.setItem(SESSION_KEY, '1');
     unlock();
     return true;
   } else {
@@ -948,6 +1002,45 @@ async function setPeopleWithSync(eid, people){
     throw err;
   }
 }
+function rosterWriteWithTimeout(promise, ms = 12000){
+  let timer;
+  const timeout = new Promise((_, reject)=>{
+    timer = setTimeout(()=> reject(new Error('Roster attendance update timed out')), ms);
+  });
+  return Promise.race([promise, timeout]).finally(()=> clearTimeout(timer));
+}
+async function setRosterAttendanceWithSync(eid, people, person, checkedIn){
+  const idx = people.indexOf(person);
+  if (idx < 0) throw new Error('Roster row not found for attendance update');
+  setRosterSyncStatus('更新中…');
+  try {
+    await rosterWriteWithTimeout(FB.patch(`/events/${eid}/people/${idx}`, { checkedIn }));
+    person.checkedIn = checkedIn;
+    setRosterSyncStatus('已更新');
+  } catch (err) {
+    console.error('[roster] attendance sync failed', err);
+    setRosterSyncStatus('更新失敗');
+    throw err;
+  }
+}
+async function setRosterPageAttendanceWithSync(eid, people, rows, checkedIn){
+  const patch = {};
+  rows.forEach(person => {
+    const idx = people.indexOf(person);
+    if (idx < 0) throw new Error('Roster row not found for attendance update');
+    patch[`${idx}/checkedIn`] = checkedIn;
+  });
+  setRosterSyncStatus('更新中…');
+  try {
+    await rosterWriteWithTimeout(FB.patch(`/events/${eid}/people`, patch));
+    rows.forEach(person => { person.checkedIn = checkedIn; });
+    setRosterSyncStatus('已更新');
+  } catch (err) {
+    console.error('[roster] attendance sync failed', err);
+    setRosterSyncStatus('更新失敗');
+    throw err;
+  }
+}
 function makeLogKey(){
   return `t${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`;
 }
@@ -969,6 +1062,10 @@ async function logAttendanceChange(eid, person, checkedIn){
   } catch (err) {
     console.warn('[roster] attendance log failed', err);
   }
+}
+function queueAttendanceLog(eid, person, checkedIn){
+  rosterWriteWithTimeout(logAttendanceChange(eid, person, checkedIn), 5000)
+    .catch(err => console.warn('[roster] attendance log failed', err));
 }
 function csvEscape(val){
   const s = String(val ?? '');
@@ -997,12 +1094,64 @@ async function exportAttendanceLog(eid){
   return rows.join('\n');
 }
 
-function rewardText(p){
+function rosterPrizeKeys(p = {}) {
+  const phone = String(p.phone || '').trim();
+  const code = String(p.code || p.staffId || '').trim();
+  const name = String(p.name || '').trim();
+  const dept = String(p.dept || p.department || '').trim();
+  const keys = [];
+  if (phone) keys.push(`phone:${phone}`);
+  if (code) keys.push(`code:${code}`);
+  if (name || dept) keys.push(`name:${name}||${dept}`);
+  return keys;
+}
+
+function v2RewardTextForPerson(p, v2PrizeMap) {
+  if (!v2PrizeMap) return [];
+  const found = new Set();
+  rosterPrizeKeys(p).forEach(key => {
+    (v2PrizeMap.get(key) || []).forEach(label => found.add(label));
+  });
+  return Array.from(found);
+}
+
+function addV2Reward(map, winner, label) {
+  if (!winner || !label) return;
+  const keys = new Set(rosterPrizeKeys(winner));
+  if (winner.key) keys.add(String(winner.key));
+  keys.forEach(key => {
+    if (!key) return;
+    if (!map.has(key)) map.set(key, []);
+    const rewards = map.get(key);
+    if (!rewards.includes(label)) rewards.push(label);
+  });
+}
+
+function collectV2RosterPrizeMap(v2 = {}) {
+  const map = new Map();
+  const addBatch = batch => {
+    if (!batch || batch.undone === true || batch.supersededBy) return;
+    const prizeName = String(batch.prizeName || '').trim();
+    if (!prizeName) return;
+    const roundName = batch.mode === 'extra' && batch.roundName ? `${batch.roundName}: ` : '';
+    const label = `V2: ${roundName}${prizeName}`;
+    (Array.isArray(batch.winners) ? batch.winners : []).forEach(winner => addV2Reward(map, winner, label));
+  };
+
+  Object.values(v2?.main?.batches || {}).forEach(addBatch);
+  Object.values(v2?.rewardRounds || {}).forEach(round => {
+    Object.values(round?.batches || {}).forEach(addBatch);
+  });
+  return map;
+}
+
+function rewardText(p, v2PrizeMap){
   const main = p?.prize ? `🎁 ${p.prize}` : '';
   const extra = Object.entries(p?.rewardRounds || {})
     .map(([round, prize]) => `${round}: ${prize}`)
     .join('<br>');
-  return [main, extra].filter(Boolean).join('<br>');
+  const v2 = v2RewardTextForPerson(p, v2PrizeMap).join('<br>');
+  return [main, extra, v2].filter(Boolean).join('<br>');
 }
 
 function formatHongKongDateTime(value, fallbackText = ''){
@@ -1043,7 +1192,11 @@ async function renderRoster(){
   { const el=document.getElementById('thDept');   if(el) el.textContent=deptLabel; }
 
   // data
-  const people = await getPeople(eid);
+  const [people, v2] = await Promise.all([
+    getPeople(eid),
+    FB.get(`/events/${eid}/ui/luckyV2`).catch(() => ({}))
+  ]);
+  const v2PrizeMap = collectV2RosterPrizeMap(v2 || {});
   rosterState.cache = people;
   updateRosterCounters(people);
 
@@ -1051,7 +1204,8 @@ async function renderRoster(){
   const q = (document.getElementById('searchGuest')?.value || '').toLowerCase();
   let list = people.filter(p=>{
     const extraRewards = Object.values(p.rewardRounds || {}).join(' ');
-    const hay = [p.name,p.dept,p.phone,p.code,p.table,p.seat,firstLoginText(p),lastLoginText(p),p.prize,extraRewards].map(x=>(x||'').toLowerCase()).join(' ');
+    const v2Rewards = v2RewardTextForPerson(p, v2PrizeMap).join(' ');
+    const hay = [p.name,p.dept,p.phone,p.code,p.table,p.seat,firstLoginText(p),lastLoginText(p),p.prize,extraRewards,v2Rewards].map(x=>(x||'').toLowerCase()).join(' ');
     return hay.includes(q);
   });
 
@@ -1080,15 +1234,19 @@ async function renderRoster(){
     const checkedCount = pageSlice.filter(p => p && p.checkedIn).length;
     checkAll.checked = pageSlice.length > 0 && checkedCount === pageSlice.length;
     checkAll.indeterminate = checkedCount > 0 && checkedCount < pageSlice.length;
+    checkAll.onclick = e => e.stopPropagation();
     checkAll.onchange = async (e)=>{
       const next = e.target.checked;
       const changed = pageSlice.filter(p => p && p.checkedIn !== next);
       if (changed.length === 0) return;
-      changed.forEach(p=>{ p.checkedIn = next; });
-      await setPeopleWithSync(eid, people);
-      await Promise.all(changed.map(p=>logAttendanceChange(eid, p, next)));
-      updateRosterCounters(people);
-      await renderRoster();
+      try {
+        await setRosterPageAttendanceWithSync(eid, people, changed, next);
+        updateRosterCounters(people);
+        await renderRoster();
+        changed.forEach(p=> queueAttendanceLog(eid, p, next));
+      } catch (err) {
+        await renderRoster();
+      }
     };
   }
 
@@ -1108,7 +1266,7 @@ function renderRow(tr, p, idx, mode){
       <td><input class="in seat"  value="${p.seat||''}"></td>
       <td>${firstLoginText(p)}</td>
       <td>${lastLoginText(p)}</td>
-      <td>${rewardText(p)}</td>
+      <td>${rewardText(p, v2PrizeMap)}</td>
       <td>
         <button class="btn small save">儲存</button>
         <button class="btn small cancel">取消</button>
@@ -1116,12 +1274,17 @@ function renderRow(tr, p, idx, mode){
     `;
     // checkbox persists immediately
     tr.querySelector('td input[type="checkbox"]').onchange = async (e)=>{
+      const checkbox = e.target;
+      const previous = !!p.checkedIn;
       const next = e.target.checked;
-      if (p.checkedIn === next) return;
-      p.checkedIn = next;
-      await setPeopleWithSync(eid, people);
-      await logAttendanceChange(eid, p, next);
-      updateRosterCounters(people);
+      if (previous === next) return;
+      try {
+        await setRosterAttendanceWithSync(eid, people, p, next);
+        updateRosterCounters(people);
+        queueAttendanceLog(eid, p, next);
+      } catch (err) {
+        checkbox.checked = previous;
+      }
     };
     const doSave = async ()=>{
       const v = sel => tr.querySelector(sel)?.value?.trim() || '';
@@ -1153,7 +1316,7 @@ function renderRow(tr, p, idx, mode){
       <td>${p.seat || ''}</td>
       <td>${firstLoginText(p)}</td>
       <td>${lastLoginText(p)}</td>
-      <td>${rewardText(p)}</td>
+      <td>${rewardText(p, v2PrizeMap)}</td>
       <td>
         <button class="btn small edit">編輯</button>
         ${p.prize ? '<button class="btn small" data-clear-win>清除得獎</button>' : ''}
@@ -1161,12 +1324,17 @@ function renderRow(tr, p, idx, mode){
       </td>
     `;
     tr.querySelector('td input[type="checkbox"]').onchange = async (e)=>{
+      const checkbox = e.target;
+      const previous = !!p.checkedIn;
       const next = e.target.checked;
-      if (p.checkedIn === next) return;
-      p.checkedIn = next;
-      await setPeopleWithSync(eid, people);
-      await logAttendanceChange(eid, p, next);
-      updateRosterCounters(people);
+      if (previous === next) return;
+      try {
+        await setRosterAttendanceWithSync(eid, people, p, next);
+        updateRosterCounters(people);
+        queueAttendanceLog(eid, p, next);
+      } catch (err) {
+        checkbox.checked = previous;
+      }
     };
     tr.querySelector('.edit').onclick = ()=> renderRow(tr, p, idx, 'edit');
     // Double-click row to jump into edit mode for on-the-go changes
@@ -1236,7 +1404,7 @@ function bindRoster(){
     const csv = await exportCSV();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8;' }));
-    a.download = 'roster.csv';
+    a.download = `roster_${fileTimestamp()}.csv`;
     a.click();
   });
   document.getElementById('btnExportAttendanceLog')?.addEventListener('click', async ()=>{

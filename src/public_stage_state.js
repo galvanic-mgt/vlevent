@@ -1,6 +1,7 @@
-// Simple public-side listener for /ui/stageState
+// Public-side listener for /ui/stageState plus poll QR/results overlays.
 import { FB } from './fb.js';
 import { renderBatchGrid as renderBatchGridCore, fireConfettiAtCards } from './stage_draw_logic.js';
+import { voteCountsFromPoll } from './polls_public_firebase.js';
 
 function getEventId() {
   const u = new URL(location.href);
@@ -12,10 +13,9 @@ if (!eid) {
   console.error('[public_stage_state] Missing ?event= in URL');
 }
 
-// track last batch so we can animate only on changes
 let lastWinnersKey = null;
 let stageInitialized = false;
-let resultsState = null; // {trigger, items, idx, title, max, step}
+let resultsState = null;
 let clickBound = false;
 let lastQRKey = null;
 
@@ -25,23 +25,26 @@ function normalizeWinners(raw) {
   return Object.values(raw);
 }
 
-async function renderPollQRInGrid(grid, eid, ui){
-  const pid = ui && ui.currentPollId ? ui.currentPollId : null;
-  const show = ui && ui.showPollQR === true && pid;
-  if (!show || !grid) return false;
-
-  const poll = await FB.get(`/events/${eid}/polls/${pid}`).catch(()=>null);
-  const title = (poll && (poll.question || poll.q)) ? (poll.question || poll.q) : pid;
-
+function voteLink(eid, pid) {
   const u = new URL(location.href);
   u.pathname = (u.pathname.replace(/[^/]+$/, '') || '/') + 'vote.html';
   u.search = `?event=${encodeURIComponent(eid)}&poll=${encodeURIComponent(pid)}`;
-  const link = u.href;
+  return u.href;
+}
+
+async function renderPollQRInGrid(grid, eid, ui) {
+  const pid = ui?.currentPollId || null;
+  const show = ui?.showPollQR === true && pid;
+  if (!show || !grid) return false;
+
+  const poll = await FB.get(`/events/${eid}/polls/${pid}`).catch(() => null);
+  const title = poll?.question || poll?.q || pid;
+  const link = voteLink(eid, pid);
 
   grid.innerHTML = `
     <div class="qr-panel">
       <div class="qr-box-inline">
-        <div class="qr-title">現正投票：<span>${title}</span></div>
+        <div class="qr-title">Voting: <span>${title}</span></div>
         <div id="publicPollQRCanvas"></div>
         <div class="qr-link">${link}</div>
       </div>
@@ -58,48 +61,63 @@ async function renderPollQRInGrid(grid, eid, ui){
   return true;
 }
 
-function bindResultsAdvance(grid){
+function bindResultsAdvance(grid) {
   if (clickBound) return;
   clickBound = true;
   grid.addEventListener('click', advanceResults);
 }
 
-function advanceResults(){
+function advanceResults() {
   if (!resultsState || !resultsState.items?.length) return;
   const total = resultsState.items.length;
   const step = Math.min(total, (resultsState.step || 0) + 1);
   resultsState.step = step;
-  resultsState.idx = step - 1;
   const grid = document.getElementById('stageGrid');
   if (grid) renderResultsStep(grid);
 }
 
-function renderResultsStep(grid){
+function orderedPollItems(poll) {
+  const votes = voteCountsFromPoll(poll || {});
+  const items = (poll?.options || []).map((o, index) => ({
+    id: o.id,
+    text: o.text || '',
+    count: Number(votes[o.id] || 0),
+    originalIndex: index
+  }));
+  if (Array.isArray(poll?.resultOrder) && poll.resultOrder.length) {
+    const order = new Map(poll.resultOrder.map((id, index) => [id, index]));
+    items.sort((a, b) => (order.get(a.id) ?? a.originalIndex + 10000) - (order.get(b.id) ?? b.originalIndex + 10000));
+  }
+  const topCount = Math.max(0, ...items.map(item => item.count));
+  return items.map(item => ({ ...item, isTop: topCount > 0 && item.count === topCount }));
+}
+
+function renderResultsStep(grid) {
   if (!resultsState || !grid) return;
   const { items, step, title, max } = resultsState;
   const idx = step - 1;
+  const complete = idx >= items.length - 1;
+
   grid.innerHTML = `
     <div class="results-chart">
       <div class="results-inner">
-        <div class="results-title">現正投票：${title}</div>
+        <div class="results-title">Voting: ${title}</div>
         <div class="results-bars">
           ${items.map((it, i) => `
-            <div class="rBar">
-              <div class="crown">${i === items.length - 1 ? '👑' : ''}</div>
-              <div class="rFillWrap"><div class="rFill" data-count="${it.count}" data-target="${Math.max(6, Math.round((it.count / max) * 100))}"></div></div>
+            <div class="rBar ${i <= idx ? 'is-revealed' : ''} ${it.isTop && complete ? 'is-top' : ''}">
+              <div class="crown">${it.isTop && complete ? 'TOP' : ''}</div>
+              <div class="rFillWrap"><div class="rFill" data-target="${Math.max(6, Math.round((it.count / max) * 100))}"></div></div>
               <div class="rLabel" data-text="${it.text}"></div>
               <div class="rCount"></div>
             </div>
           `).join('')}
         </div>
-        <div class="results-status">點擊畫面播放下一個${idx >= items.length ? ' — 動畫完畢' : ''}</div>
+        <div class="results-status">${complete ? 'Final result' : 'Click or press Next to reveal'}</div>
       </div>
     </div>
   `;
 
-  // animate revealed bars
-  const bars = Array.from(grid.querySelectorAll('.rBar'));
-  bars.forEach((bar, i) => {
+  Array.from(grid.querySelectorAll('.rBar')).forEach((bar, i) => {
     const fill = bar.querySelector('.rFill');
     const countEl = bar.querySelector('.rCount');
     const labelEl = bar.querySelector('.rLabel');
@@ -108,11 +126,11 @@ function renderResultsStep(grid){
     if (i <= idx) {
       if (fill) {
         fill.style.height = '0%';
-        requestAnimationFrame(() => { fill.style.height = target + '%'; });
+        requestAnimationFrame(() => { fill.style.height = `${target}%`; });
       }
       if (labelEl) labelEl.textContent = labelEl.dataset.text || '';
-      if (countEl) countEl.textContent = `${items[i].count} 票`;
-      if (crown) crown.style.opacity = i === items.length - 1 ? 1 : 0;
+      if (countEl) countEl.textContent = `${items[i].count} votes`;
+      if (crown) crown.style.opacity = items[i].isTop && complete ? 1 : 0;
     } else {
       if (fill) fill.style.height = '0%';
       if (labelEl) labelEl.textContent = '';
@@ -129,26 +147,19 @@ async function refreshStage(uiOverride) {
     const ui = uiOverride !== undefined
       ? uiOverride
       : await FB.get(`/events/${eid}/ui`).catch(() => null);
-    const state = ui && ui.stageState ? ui.stageState : null;
-
+    const state = ui?.stageState || null;
     const grid = document.getElementById('stageGrid');
     if (!grid) return;
 
-    // Poll results mode (highest priority)
     const resTrigger = ui?.pollResultsTrigger || null;
     const resStep = Number(ui?.pollResultsStep || 0);
     if (resTrigger && resultsState?.trigger !== resTrigger) {
       const pid = ui?.currentPollId || null;
       if (pid) {
-        const poll = await FB.get(`/events/${eid}/polls/${pid}`).catch(()=>null);
-        const votes = poll?.votes || {};
-        const items = (poll?.options || []).map(o => ({
-          text: o.text || '',
-          count: Number(votes[o.id] || 0)
-        }));
-        items.sort((a,b)=>a.count - b.count);
-        const max = Math.max(1, ...items.map(i=>i.count));
-        resultsState = { trigger: resTrigger, items, idx: -1, title: poll?.question || poll?.q || pid, max, step: resStep };
+        const poll = await FB.get(`/events/${eid}/polls/${pid}`).catch(() => null);
+        const items = orderedPollItems(poll);
+        const max = Math.max(1, ...items.map(item => item.count));
+        resultsState = { trigger: resTrigger, items, title: poll?.question || poll?.q || pid, max, step: resStep };
         lastWinnersKey = null;
       }
     } else if (resTrigger && resultsState) {
@@ -163,14 +174,11 @@ async function refreshStage(uiOverride) {
       renderResultsStep(grid);
       bindResultsAdvance(grid);
       return;
-    } else {
-      document.body.classList.remove('results-mode');
     }
+    document.body.classList.remove('results-mode');
 
-    // Poll QR mode: render QR in grid and skip draw rendering
-    const qrKey = (ui && ui.showPollQR && ui.currentPollId) ? `${ui.currentPollId}` : null;
+    const qrKey = ui?.showPollQR && ui?.currentPollId ? `${ui.currentPollId}` : null;
     if (qrKey && qrKey === lastQRKey) {
-      // already showing same QR; ensure mode class is set
       document.body.classList.add('qr-mode');
       return;
     }
@@ -189,7 +197,6 @@ async function refreshStage(uiOverride) {
     }
 
     if (!state || !state.winners) {
-      // nothing drawn yet — keep grid empty
       grid.innerHTML = '';
       lastWinnersKey = null;
       stageInitialized = true;
@@ -199,7 +206,6 @@ async function refreshStage(uiOverride) {
     const winnersArray = normalizeWinners(state.winners);
     const key = JSON.stringify(winnersArray.map(w => [w.name, w.dept, w.time]));
 
-    // first load: just render, no countdown
     if (!stageInitialized) {
       renderBatchGridCore(grid, winnersArray, 'public');
       lastWinnersKey = key;
@@ -207,15 +213,12 @@ async function refreshStage(uiOverride) {
       return;
     }
 
-    // no change: keep grid in sync but no animation
     if (key === lastWinnersKey) {
       renderBatchGridCore(grid, winnersArray, 'public');
       return;
     }
 
-    const skip = (state && state.skipCountdown === true) || ui.skipCountdown === true;
-
-    // new winners: animate (or skip) then render + confetti
+    const skip = state?.skipCountdown === true || ui?.skipCountdown === true;
     lastWinnersKey = key;
 
     const overlay = document.getElementById('stageCountdown');
@@ -231,22 +234,17 @@ async function refreshStage(uiOverride) {
     }
 
     renderBatchGridCore(grid, winnersArray, 'public');
-    const cards = grid.querySelectorAll('.winner-card');
-    fireConfettiAtCards(cards);
-
-    // leaving draw mode, ensure mode classes are removed if not active
+    fireConfettiAtCards(grid.querySelectorAll('.winner-card'));
     document.body.classList.remove('qr-mode');
     if (!resultsState) document.body.classList.remove('results-mode');
-
   } catch (e) {
     console.warn('[public_stage_state] refresh error', e);
   }
 }
 
-// Initial + change stream. This avoids constant Firebase reads while staying live.
 (async () => {
   await refreshStage();
   if (FB?.listen && eid) {
-    FB.listen(`/events/${eid}/ui`, (ui) => refreshStage(ui), { fallbackMs: 5000 });
+    FB.listen(`/events/${eid}/ui`, ui => refreshStage(ui), { fallbackMs: 5000 });
   }
 })();

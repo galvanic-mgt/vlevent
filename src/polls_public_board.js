@@ -1,6 +1,7 @@
 import { FB } from './fb.js';
 import { getAssets } from './core_firebase.js';
 import { applyBackground } from './ui_background.js';
+import { voteCountsFromPoll } from './polls_public_firebase.js';
 
 const url = new URL(location.href);
 const eid = url.searchParams.get('event');
@@ -38,7 +39,7 @@ async function resolvePollId(eid){
 
 function renderBars(poll){
   $('#pollQ').textContent = poll.question || '投票';
-  const votes = poll.votes || {};
+  const votes = voteCountsFromPoll(poll || {});
   const opts  = poll.options || [];
   const total = Object.values(votes).reduce((a,b)=> a + Number(b || 0), 0);
   $('#total').textContent = `共 ${total} 票`;
@@ -99,7 +100,7 @@ async function playResultsAnimation(poll){
   const status = document.getElementById('resultStatus');
   if (!chart || !wrap) return;
 
-  const votes = poll.votes || {};
+  const votes = voteCountsFromPoll(poll || {});
   const opts = (poll.options || []).map(o => ({
     id: o.id,
     text: o.text || '',

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voting Control</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./styles.css">
+  <style>
+    :root{color-scheme:dark;--bg:#080b10;--panel:#111827;--panel2:#162033;--line:#2d3a51;--text:#f8fafc;--muted:#aab6c8;--accent:#20d3c2;--gold:#ffd166;--danger:#ff5a67;--ok:#39d98a}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    button,input,select{font:inherit}
+    .vc-shell{display:grid;grid-template-columns:minmax(300px,380px) 1fr;min-height:100vh}
+    .vc-side{padding:18px;border-right:1px solid var(--line);background:linear-gradient(180deg,#111827,#0d1422);overflow:auto}
+    .vc-main{padding:22px;overflow:auto}
+    .vc-panel{border:1px solid var(--line);background:rgba(17,24,39,.92);border-radius:8px;padding:14px;margin-bottom:14px}
+    .vc-title{margin:0 0 4px;font-size:26px;font-weight:900;letter-spacing:0}
+    .vc-sub{margin:0;color:var(--muted);line-height:1.45}
+    .vc-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .vc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .vc-field{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+    .vc-field span{font-size:13px;color:var(--muted)}
+    .vc-field input,.vc-field select{width:100%;border:1px solid var(--line);border-radius:8px;background:#0b1220;color:var(--text);padding:10px}
+    .vc-btn{border:1px solid var(--line);border-radius:8px;background:#1f2a3d;color:var(--text);padding:10px 12px;cursor:pointer;font-weight:800}
+    .vc-btn:hover{border-color:var(--accent)}
+    .vc-btn.primary{background:linear-gradient(135deg,#0f9f93,#1f7aec);border-color:transparent}
+    .vc-btn.gold{background:linear-gradient(135deg,#b7791f,#f6c453);color:#111827;border-color:transparent}
+    .vc-btn.ok{background:#126b45;border-color:#1fa56b}
+    .vc-btn.danger{background:#6d1f2a;border-color:#9f2c3b}
+    .vc-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+    .vc-actions .wide{grid-column:span 2}
+    .vc-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:5px 10px;background:#0b1220;color:var(--muted);font-size:13px}
+    .vc-chip.ok{color:#b9ffd8;border-color:#1f8f61}
+    .vc-chip.warn{color:#ffe0a3;border-color:#b7791f}
+    .vc-chip.live{color:#a8fff7;border-color:#20d3c2}
+    .vc-poll-list{display:grid;gap:8px}
+    .vc-poll{border:1px solid var(--line);border-radius:8px;background:#0b1220;padding:10px;cursor:pointer}
+    .vc-poll.active{border-color:var(--accent);box-shadow:0 0 0 1px rgba(32,211,194,.35)}
+    .vc-poll strong{display:block;line-height:1.25}
+    .vc-poll small{display:block;margin-top:4px;color:var(--muted)}
+    .vc-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+    .vc-stat{border:1px solid var(--line);border-radius:8px;background:#0b1220;padding:12px}
+    .vc-stat span{display:block;color:var(--muted);font-size:13px}
+    .vc-stat strong{display:block;margin-top:4px;font-size:28px}
+    .vc-bars{display:grid;gap:10px}
+    .vc-bar{display:grid;grid-template-columns:minmax(120px,220px) 1fr 70px;gap:10px;align-items:center}
+    .vc-track{height:18px;border-radius:999px;background:#0b1220;border:1px solid var(--line);overflow:hidden}
+    .vc-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--gold))}
+    .vc-link{color:#8bd5ff;word-break:break-all}
+    .vc-qr{display:grid;place-items:center;padding:12px;background:#fff;border-radius:8px;width:max-content;max-width:100%}
+    .vc-status{min-height:22px;color:var(--muted);font-size:14px;line-height:1.45}
+    @media(max-width:980px){.vc-shell{grid-template-columns:1fr}.vc-side{border-right:0;border-bottom:1px solid var(--line)}.vc-actions{grid-template-columns:1fr 1fr}.vc-actions .wide{grid-column:span 1}.vc-bar{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="vc-shell">
+    <aside class="vc-side">
+      <section class="vc-panel">
+        <h1 class="vc-title">Voting Control</h1>
+        <p class="vc-sub">Live operator desk for QR, voting state, and public result reveal.</p>
+      </section>
+
+      <section class="vc-panel">
+        <div class="vc-field">
+          <span>Poll</span>
+          <select id="pollSelect"></select>
+        </div>
+        <div id="pollList" class="vc-poll-list"></div>
+      </section>
+
+      <section class="vc-panel">
+        <div class="vc-field">
+          <span>Lucky Draw V2 public screen</span>
+          <a id="v2PublicLink" class="vc-link" href="#" target="_blank" rel="noopener"></a>
+        </div>
+        <div class="vc-row">
+          <button id="openPublic" class="vc-btn">Open Public</button>
+          <button id="copyPublic" class="vc-btn">Copy Link</button>
+          <a id="backCms" class="vc-btn" href="#">Back to CMS</a>
+        </div>
+      </section>
+    </aside>
+
+    <main class="vc-main">
+      <section class="vc-panel">
+        <div class="vc-row" style="justify-content:space-between">
+          <div>
+            <h2 id="pollTitle" class="vc-title">Select a poll</h2>
+            <p id="pollMeta" class="vc-sub"></p>
+          </div>
+          <div class="vc-row">
+            <span id="stageChip" class="vc-chip">Stage: loading</span>
+            <span id="openChip" class="vc-chip">Voting: loading</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="vc-panel">
+        <div class="vc-actions">
+          <button id="standbyPoll" class="vc-btn">Standby</button>
+          <button id="showQr" class="vc-btn gold">Show QR</button>
+          <button id="openVoting" class="vc-btn ok">Open Voting</button>
+          <button id="closeVoting" class="vc-btn danger">Close Voting</button>
+          <button id="startResults" class="vc-btn primary wide">Reveal Results</button>
+          <button id="nextResult" class="vc-btn gold">Next Result</button>
+          <button id="revealAll" class="vc-btn primary">Reveal All</button>
+          <button id="clearStage" class="vc-btn">Clear to V2 Draw</button>
+        </div>
+      </section>
+
+      <section class="vc-panel">
+        <div class="vc-grid">
+          <div>
+            <div class="vc-field">
+              <span>Vote page</span>
+              <a id="voteLink" class="vc-link" href="#" target="_blank" rel="noopener"></a>
+            </div>
+            <div id="qrPreview" class="vc-qr"></div>
+          </div>
+          <div>
+            <div class="vc-stats">
+              <div class="vc-stat"><span>Total votes</span><strong id="totalVotes">0</strong></div>
+              <div class="vc-stat"><span>Voters</span><strong id="totalVoters">0</strong></div>
+              <div class="vc-stat"><span>Reveal step</span><strong id="revealStep">0</strong></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="vc-panel">
+        <h3 class="vc-sub" style="margin:0 0 10px">Live results</h3>
+        <div id="resultBars" class="vc-bars"></div>
+      </section>
+
+      <section class="vc-panel">
+        <div id="status" class="vc-status">Loading...</div>
+      </section>
+    </main>
+  </div>
+  <script src="./qrcode.min.js"></script>
+  <script type="module" src="./src/voting_control.js"></script>
+</body>
+</html>

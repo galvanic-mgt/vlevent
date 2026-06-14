@@ -18,6 +18,21 @@ function showErrorOverlay(title, error){
   el.appendChild(pre);
 }
 
+function setBootStatus(title, detail = '', failed = false){
+  const el = document.getElementById('cmsBootStatus');
+  if (!el) return;
+  const titleEl = document.getElementById('cmsBootTitle');
+  const detailEl = document.getElementById('cmsBootDetail');
+  el.classList.toggle('is-failed', failed);
+  if (titleEl) titleEl.textContent = title;
+  if (detailEl) detailEl.textContent = detail;
+}
+
+function markBootFailed(title, error){
+  document.body.classList.add('cms-auth-pending');
+  setBootStatus(title, error?.message || String(error || 'Startup could not finish.'), true);
+}
+
 async function safeImport(path, label){
   try{
     const m = await import(path);
@@ -51,6 +66,18 @@ if (!window.__GLOBAL_NETS_BOUND__) {
 }
 
 export async function startApp(){
+  setBootStatus('Loading CMS...', 'Checking login and event data.');
+  const slowTimer = setTimeout(() => {
+    if (document.body.classList.contains('cms-auth-pending')) {
+      setBootStatus('Still loading...', 'Checking database and saved login. If this stays here, refresh once or check the connection.');
+    }
+  }, 8000);
+  const failTimer = setTimeout(() => {
+    if (document.body.classList.contains('cms-auth-pending')) {
+      setBootStatus('Loading failed', 'Startup is taking too long. Refresh once, or check the database/network connection.', true);
+    }
+  }, 25000);
+
   // 1) Admin overlay (non-critical)
   const overlay = await safeImport('./admin_overlay.js', 'admin_overlay.js');
   overlay.bindLoginOverlay?.();
@@ -59,10 +86,16 @@ export async function startApp(){
   const cms = await safeImport('./ui_cms_firebase.js', 'ui_cms_firebase.js');
   if (typeof cms.bootCMS === 'function') {
     try { await cms.bootCMS(); }
-    catch (err) { showErrorOverlay('bootCMS()', err); }
+    catch (err) {
+      markBootFailed('Loading failed', err);
+      showErrorOverlay('bootCMS()', err);
+    }
   } else {
+    markBootFailed('Loading failed', 'ui_cms_firebase.js did not export bootCMS');
     showErrorOverlay('bootCMS()', 'ui_cms_firebase.js did not export bootCMS');
   }
+  clearTimeout(slowTimer);
+  clearTimeout(failTimer);
 
   // 3) Public/tablet (no-ops if elements absent)
   const surfaces = await safeImport('./surfaces_public_tablet.js', 'surfaces_public_tablet.js');

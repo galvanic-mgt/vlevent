@@ -1,0 +1,48 @@
+import { FB } from './fb.js';
+import { initEventFromUrl, loadV2Assets, v2Root } from './lucky_v2_core.js';
+import { applyV2Assets, renderV2Stage } from './lucky_v2_stage.js';
+
+const eid = initEventFromUrl();
+let lastV2State = null;
+let lastPublicScreen = null;
+
+function publicScreenRoot(eid) {
+  return `/events/${eid}/ui/publicScreen`;
+}
+
+function pickStageState() {
+  if (lastPublicScreen && (lastPublicScreen.mode === 'poll' || lastPublicScreen.kind === 'poll')) {
+    return lastPublicScreen;
+  }
+  return lastV2State || { status: 'clear', message: 'Waiting for V2 control' };
+}
+
+function rerender() {
+  renderV2Stage(pickStageState());
+}
+
+async function boot() {
+  if (!eid) {
+    renderV2Stage({ status: 'clear', message: 'Missing event ID' });
+    return;
+  }
+  const assetInfo = await loadV2Assets(eid);
+  applyV2Assets(assetInfo);
+  const [state, publicScreen] = await Promise.all([
+    FB.get(`${v2Root(eid)}/ui/stageState`).catch(() => null),
+    FB.get(publicScreenRoot(eid)).catch(() => null)
+  ]);
+  lastV2State = state || { status: 'clear', message: 'Waiting for V2 control' };
+  lastPublicScreen = publicScreen || null;
+  rerender();
+  FB.listen?.(`${v2Root(eid)}/ui/stageState`, next => {
+    lastV2State = next || { status: 'clear', message: 'Waiting for V2 control' };
+    rerender();
+  }, { fallbackMs: 3000 });
+  FB.listen?.(publicScreenRoot(eid), next => {
+    lastPublicScreen = next || null;
+    rerender();
+  }, { fallbackMs: 3000 });
+}
+
+boot();

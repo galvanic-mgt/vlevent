@@ -3,6 +3,11 @@
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>VLevent Lucky draw</title>
+    <script>
+      if (location.protocol === 'file:') {
+        location.replace('http://127.0.0.1:8000/index.html' + location.search + location.hash);
+      }
+    </script>
     <link rel="stylesheet" href="./styles.css"/>
     <link rel="icon" href="data:,">
     <style>body{font-size:110%;}
@@ -16,8 +21,14 @@
       border-radius:999px;margin:2px}.photo{display:inline-block;margin:6px}
     body.cms-locked,body.cms-auth-pending{overflow:hidden}
     body.cms-locked header,body.cms-locked main,body.cms-auth-pending header,body.cms-auth-pending main{display:none!important}
-    .login-gate{position:fixed;inset:0;z-index:99999;display:none;align-items:center;justify-content:center;padding:24px;background:radial-gradient(circle at top,#18233d,#070b12 62%);color:#fff}
+    .login-gate,.cms-boot-status{position:fixed;inset:0;z-index:99999;display:none;align-items:center;justify-content:center;padding:24px;background:radial-gradient(circle at top,#18233d,#070b12 62%);color:#fff}
+    .cms-boot-card{width:min(420px,100%);display:flex;flex-direction:column;gap:10px;background:#121a2b;border:1px solid rgba(255,255,255,.16);border-radius:8px;padding:24px;box-shadow:0 24px 80px rgba(0,0,0,.45)}
+    .cms-boot-title{margin:0;font-size:24px;font-weight:800}
+    .cms-boot-detail{margin:0;color:#cbd5e1;font-size:15px;line-height:1.5}
+    .cms-boot-status.is-failed .cms-boot-title{color:#ff6b75}
+    body.cms-auth-pending .cms-boot-status{display:flex}
     body.cms-auth-pending .login-gate{display:none!important}
+    body.cms-locked .cms-boot-status{display:none!important}
     body.cms-locked .login-gate{display:flex}
     .login-card{width:min(420px,100%);display:flex;flex-direction:column;gap:14px;background:#121a2b;border:1px solid rgba(255,255,255,.16);border-radius:8px;padding:24px;box-shadow:0 24px 80px rgba(0,0,0,.45)}
     .login-brand{margin:0 0 2px;text-align:center;font-size:42px;line-height:1;font-weight:900;letter-spacing:0;text-transform:uppercase;background:linear-gradient(135deg,#fff 0%,#7ee7ff 42%,#ffd166 100%);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 16px 40px rgba(62,221,255,.22)}
@@ -28,6 +39,7 @@
       </style>
       </head>
 <body class="cms-auth-pending">
+<div id="cmsBootStatus" class="cms-boot-status" role="status" aria-live="polite"><div class="cms-boot-card"><p id="cmsBootTitle" class="cms-boot-title">Loading CMS...</p><p id="cmsBootDetail" class="cms-boot-detail">Checking login and event data.</p></div></div>
 <div id="loginGate" class="login-gate" aria-modal="true" role="dialog"><form id="loginForm" class="login-card"><div class="login-brand">VLEVENT CMS</div><h3>登入後台</h3><label>帳號 <input id="loginUser" autocomplete="username" placeholder="administrator"/></label><label>密碼 <input id="loginPass" type="password" autocomplete="current-password" placeholder="administrator"/></label><div id="loginError" class="login-error" aria-live="polite"></div><button class="btn primary" type="submit">登入</button></form></div>
 <header><div class="container row"><div class="tabs"><button class="btn primary active" type="button">後台 CMS</button></div>
   <div class="bar" style="margin-left:auto"><button id="themeToggle" class="btn small">☀️ Normal Mode</button>
@@ -45,6 +57,7 @@
 <button class="nav-item" data-target="pagePrizes">獎品</button>
 <button class="nav-item" data-target="pageRewardRounds">第二輪抽獎</button>
 <button class="nav-item" data-target="pageStageDraw">後台抽獎</button>
+<button class="nav-item" data-target="pageLuckyV2">Lucky Draw V2</button>
 <!-- 抽問 tab hidden -->
 <button class="nav-item" data-target="pagePoll">投票</button>
 <button class="nav-item" data-target="pageStorage">素材/檔案</button>
@@ -142,12 +155,12 @@
 <section class="card subpage" id="pageStageDraw" style="display:none">
   <h3>後台抽獎</h3>
 
-   <div class="stage-controls">
-    <div class="bar" style="gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
-      <span class="muted" style="font-size:13px">Main lucky draw only. Use the Second Round tab for extra reward rounds.</span>
-    </div>
-    <div id="drawBtns" class="btns">
-      批次：
+    <div class="stage-controls">
+     <div class="bar" style="gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center;justify-content:center;flex:0 0 100%">
+       <span class="muted" style="font-size:13px">Main lucky draw only. Use the Second Round tab for extra reward rounds.</span>
+     </div>
+     <div id="drawBtns" class="btns" style="flex:0 0 100%;text-align:center">
+       批次：
       <button class="btn small" data-batch="1">1</button>
       <button class="btn small" data-batch="2">2</button>
       <button class="btn small" data-batch="3">3</button>
@@ -208,6 +221,16 @@
 <!-- reroll record panel under the canvas -->
  
 <div id="rerollLogPanel" class="reroll-log"></div>
+</section>
+
+<section class="card subpage" id="pageLuckyV2" style="display:none">
+  <h3>Lucky Draw V2</h3>
+  <p class="muted">Separate live draw control. Keep the old draw in place, but use this page for V2 testing and operation.</p>
+  <div class="bar" style="gap:8px;flex-wrap:wrap;margin-top:12px">
+    <a id="btnLuckyV2Control" class="btn primary" href="./lucky_v2.html" target="_blank" rel="noopener">Open Lucky Draw V2 Control</a>
+    <a id="btnLuckyV2Public" class="btn" href="./lucky_v2_public.html" target="_blank" rel="noopener">Open V2 Public Screen</a>
+  </div>
+  <div id="luckyV2Links" class="muted" style="margin-top:12px;word-break:break-all"></div>
 </section>
 
 <section class="card subpage" id="pagePrizes" style="display:none">

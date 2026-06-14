@@ -33,6 +33,7 @@ body{
 .lp-secondary{display:inline-block;padding:10px 14px;border-radius:12px;background:#f4f7fb;color:var(--lp-text);border:1px solid rgba(23,32,51,.16);text-decoration:none;cursor:pointer;font-size:1rem}
 .lp-link{text-align:center}
 .lp-msg{margin:8px 0}
+#tipBody{white-space:pre-line}
 
 .lp-poll-options{display:flex;flex-direction:column;gap:10px;margin:8px 0}
 .lp-poll-opt{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid rgba(23,32,51,.14);border-radius:12px;cursor:pointer;background:#f8fafc}
