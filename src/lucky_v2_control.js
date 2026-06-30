@@ -41,6 +41,15 @@ function publicUrl() {
   return url.href;
 }
 
+async function showLuckyDrawScene(message = 'Lucky Draw V2 scene') {
+  await FB.put(`/events/${eid}/ui/publicScreen`, {
+    mode: 'v2Draw',
+    kind: 'luckyDraw',
+    message,
+    updatedAt: Date.now()
+  });
+}
+
 function modeOptions() {
   const mode = $('v2Mode')?.value === 'extra' ? 'extra' : 'main';
   return {
@@ -198,24 +207,32 @@ function bindControls() {
     await navigator.clipboard.writeText(publicUrl()).catch(() => {});
     status('Public link copied.');
   });
+  $('v2ShowScene')?.addEventListener('click', () => runAction('Show lucky draw scene', async () => {
+    await showLuckyDrawScene();
+  }));
   $('v2ShowReady')?.addEventListener('click', () => runAction('Show ready', async () => {
+    await showLuckyDrawScene('Lucky Draw ready');
     await setReady(eid, modeOptions());
   }));
   $('v2Draw')?.addEventListener('click', () => runAction('Start draw', async () => {
+    await showLuckyDrawScene('Lucky Draw drawing');
     await drawV2(eid, { ...modeOptions(), revealDelay: 4600 });
   }));
   $('v2Instant')?.addEventListener('click', () => runAction('Instant draw', async () => {
+    await showLuckyDrawScene('Lucky Draw instant drawing');
     await drawV2(eid, { ...modeOptions(), instant: true });
   }));
   $('v2Redraw')?.addEventListener('click', () => runAction('Redraw batch', async () => {
     const id = selectedBatchId();
     if (!id) throw new Error('No revealed V2 batch to redraw.');
+    await showLuckyDrawScene('Lucky Draw redraw');
     await drawV2(eid, { ...modeOptions(), previousBatchId: id, redraw: true, revealDelay: 2600 });
   }));
   $('v2Reroll')?.addEventListener('click', () => runAction('Reroll selected', async () => {
     const id = selectedBatchId();
     if (!id) throw new Error('No revealed V2 batch to reroll.');
     if (selectedSlot < 0) throw new Error('Select a winner slot first.');
+    await showLuckyDrawScene('Lucky Draw reroll');
     await drawV2(eid, { ...modeOptions(), previousBatchId: id, replaceIndex: selectedSlot, revealDelay: 2200 });
     selectedSlot = -1;
   }));
@@ -224,6 +241,7 @@ function bindControls() {
     selectedSlot = -1;
   }));
   $('v2Clear')?.addEventListener('click', () => runAction('Clear public', async () => {
+    await showLuckyDrawScene('Lucky Draw cleared');
     await clearV2Stage(eid);
     selectedSlot = -1;
   }));

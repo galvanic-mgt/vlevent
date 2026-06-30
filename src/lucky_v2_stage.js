@@ -19,10 +19,20 @@ function giftBubbleText(stats) {
 
 function columnsFor(count) {
   if (count <= 1) return 1;
-  if (count <= 5) return count;
-  if (count === 6) return 3;
+  if (count <= 3) return count;
+  if (count <= 4) return 2;
+  if (count <= 6) return 3;
   if (count <= 8) return 4;
   return 5;
+}
+
+function applyMachineLayout(machine, count) {
+  const cols = columnsFor(Math.max(1, count));
+  const rows = Math.max(1, Math.ceil(Math.max(1, count) / cols));
+  machine.style.setProperty('--cols', String(cols));
+  machine.style.setProperty('--rows', String(rows));
+  machine.style.setProperty('--slot-width', `${100 / cols}%`);
+  machine.style.setProperty('--slot-height', `${100 / rows}%`);
 }
 
 function clearSpin() {
@@ -41,7 +51,10 @@ function makeSlot(winner, index, status) {
   strong.textContent = winner?.name || '---';
   const dept = document.createElement('span');
   dept.textContent = winner?.dept || '';
-  name.append(strong, dept);
+  const seat = document.createElement('span');
+  seat.className = 'v2-seat';
+  seat.textContent = winner?.seat ? `Seat ${winner.seat}` : '';
+  name.append(strong, dept, seat);
   slot.append(name);
   return slot;
 }
@@ -83,7 +96,7 @@ function renderPollStage(machine, state) {
   const revealStep = Math.max(0, Math.min(items.length, Number(state.revealStep || 0)));
   machine.innerHTML = '';
   machine.classList.add('v2-poll-machine');
-  machine.style.setProperty('--cols', String(columnsFor(Math.max(1, items.length))));
+  applyMachineLayout(machine, Math.max(1, items.length));
 
   if (display === 'qr') {
     const panel = document.createElement('div');
@@ -136,14 +149,18 @@ export function renderV2Stage(state = {}) {
   if (modeEl) modeEl.textContent = state.modeLabel || (state.mode === 'extra' ? 'Extra Round' : 'Main Draw');
   if (giftLeftEl) giftLeftEl.textContent = giftBubbleText(state.giftStats);
   if (stage) {
+    const isPoll = state.mode === 'poll' || state.kind === 'poll';
     stage.classList.toggle('is-spinning', state.status === 'spinning');
+    stage.classList.toggle('is-clear', state.status === 'clear');
+    stage.classList.toggle('is-poll', isPoll);
+    if (state.status === 'clear') stage.classList.remove('is-lever-pull');
     const leverKey = `${state.drawId || state.updatedAt || ''}:${state.status || ''}`;
     if ((state.status === 'spinning' || state.status === 'revealed') && leverKey !== lastLeverKey) {
       lastLeverKey = leverKey;
       stage.classList.remove('is-lever-pull');
       void stage.offsetWidth;
       stage.classList.add('is-lever-pull');
-      setTimeout(() => stage.classList.remove('is-lever-pull'), 1800);
+      setTimeout(() => stage.classList.remove('is-lever-pull'), 3100);
     }
   }
   if (!machine) return;
@@ -160,11 +177,10 @@ export function renderV2Stage(state = {}) {
     ? state.candidateNames
     : [{ name: 'READY', dept: '' }, { name: 'LUCKY', dept: '' }, { name: 'DRAW', dept: '' }];
   const count = Math.max(1, Number(state.batchSize || winners.length || 1));
-  machine.style.setProperty('--cols', String(columnsFor(count)));
+  applyMachineLayout(machine, count);
   machine.innerHTML = '';
 
   if (state.status === 'clear') {
-    machine.append(makeSlot({ name: 'READY', dept: '' }, 0, 'ready'));
     return;
   }
 

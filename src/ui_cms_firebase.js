@@ -302,17 +302,26 @@ function updateExternalLinks(pub, tab){
   const pubEl = pub || document.getElementById('btnPublicBoard');
   const tabEl = tab || document.querySelector('a[href$="tablet.html"]');
   const voteControlEl = document.getElementById('btnVotingControl');
+  const voteV2ControlEl = document.getElementById('btnVotingV2Control');
+  const voteV2FromLuckyEl = document.getElementById('btnVotingV2FromLucky');
+  const voteV2PublicEl = document.getElementById('btnVotingV2Public');
+  const votingV2LinksEl = document.getElementById('votingV2Links');
   const luckyV2ControlEl = document.getElementById('btnLuckyV2Control');
   const luckyV2PublicEl = document.getElementById('btnLuckyV2Public');
   const luckyV2LinksEl = document.getElementById('luckyV2Links');
   if (pubEl) pubEl.href = publicBoardLink(eid);
   if (tabEl) tabEl.href = tabletLink(eid);
   if (voteControlEl) voteControlEl.href = votingControlLink(eid);
+  const votingControl = votingControlLink(eid);
   const v2Control = luckyV2ControlLink(eid);
   const v2Public = luckyV2PublicLink(eid);
+  if (voteV2ControlEl) voteV2ControlEl.href = votingControl;
+  if (voteV2FromLuckyEl) voteV2FromLuckyEl.href = votingControl;
+  if (voteV2PublicEl) voteV2PublicEl.href = v2Public;
   if (luckyV2ControlEl) luckyV2ControlEl.href = v2Control;
   if (luckyV2PublicEl) luckyV2PublicEl.href = v2Public;
-  if (luckyV2LinksEl) luckyV2LinksEl.innerHTML = `Control: <a href="${v2Control}" target="_blank" rel="noopener">${v2Control}</a><br>Public: <a href="${v2Public}" target="_blank" rel="noopener">${v2Public}</a>`;
+  if (votingV2LinksEl) votingV2LinksEl.innerHTML = `Voting Control: <a href="${votingControl}" target="_blank" rel="noopener">${votingControl}</a><br>V2 Public: <a href="${v2Public}" target="_blank" rel="noopener">${v2Public}</a>`;
+  if (luckyV2LinksEl) luckyV2LinksEl.innerHTML = `Lucky Draw Control: <a href="${v2Control}" target="_blank" rel="noopener">${v2Control}</a><br>Voting Control: <a href="${votingControl}" target="_blank" rel="noopener">${votingControl}</a><br>Public: <a href="${v2Public}" target="_blank" rel="noopener">${v2Public}</a>`;
 }
 
 

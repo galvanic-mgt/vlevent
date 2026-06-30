@@ -175,8 +175,15 @@ async function showQr() {
 }
 
 async function openVoting() {
-  requirePoll();
+  const poll = requirePoll();
   await setActive(eid, selectedPid, true);
+  await writeLegacyStage({
+    currentPollId: selectedPid,
+    showPollQR: true,
+    pollResultsTrigger: null,
+    pollResultsStep: 0
+  });
+  await writePublicScreen(buildPollScreen(poll, 'qr'));
 }
 
 async function closeVoting() {

@@ -17,7 +17,7 @@
     .v2-stage{position:fixed;inset:0;background:#090d14;overflow:hidden}
     .v2-stage-bg{position:absolute;inset:0;background-size:cover;background-position:center;filter:brightness(.75)}
     .v2-stage-dim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.12),rgba(0,0,0,.62))}
-    .v2-lever{position:absolute;right:1.8vw;top:45%;z-index:4;width:7vw;max-width:106px;min-width:74px;height:31vh;min-height:240px;transform:translateY(-50%);pointer-events:none;perspective:520px;filter:drop-shadow(0 2vh 2.6vh rgba(0,0,0,.46))}
+    .v2-lever{position:absolute;right:0;top:50%;z-index:4;width:10%;max-width:none;min-width:0;height:70vh;min-height:0;transform:translateY(-50%);pointer-events:none;perspective:520px;filter:drop-shadow(0 2vh 2.6vh rgba(0,0,0,.46))}
     .v2-lever::before{content:"";position:absolute;right:5%;top:12%;width:72%;height:80%;border-radius:28px;background:linear-gradient(90deg,#111827,#26334a 45%,#0b111d);border:1px solid rgba(255,255,255,.2);box-shadow:inset 14px 0 28px rgba(255,255,255,.08),inset -16px 0 28px rgba(0,0,0,.5)}
     .v2-lever-rail{position:absolute;right:28%;top:21%;width:31%;height:64%;border-radius:999px;background:linear-gradient(90deg,#4a2c09,#f6c453 28%,#6b3e0b 72%,#1d1307);box-shadow:inset 0 0 16px rgba(0,0,0,.72),0 18px 42px rgba(0,0,0,.45)}
     .v2-lever-rail::before{content:"";position:absolute;inset:9% 28%;border-radius:999px;background:linear-gradient(180deg,rgba(0,0,0,.86),rgba(255,255,255,.1) 48%,rgba(0,0,0,.72));box-shadow:inset 0 0 16px rgba(0,0,0,.9)}
@@ -33,7 +33,7 @@
     .v2-stage.is-spinning .v2-lever-knob,.v2-stage.is-lever-pull .v2-lever-knob{animation:v2LeverKnob 1.7s cubic-bezier(.16,.86,.25,1) both}
     .v2-stage.is-spinning .v2-lever,.v2-stage.is-lever-pull .v2-lever{animation:v2LeverBody 1.7s ease-out both}
     .v2-stage.is-spinning .v2-lever-rail::after,.v2-stage.is-lever-pull .v2-lever-rail::after{animation:v2LeverRailLight 1.7s ease-out both}
-    .v2-stage-content{position:relative;z-index:2;height:100%;display:grid;grid-template-rows:13vh 1fr 10vh;padding:3vh 4vw;gap:2vh}
+    .v2-stage-content{position:relative;z-index:2;width:90%;height:100%;display:grid;grid-template-rows:13vh minmax(0,1fr);padding:3vh 2.5vw 3vh 4vw;gap:2vh}
     .v2-brand{display:grid;grid-template-columns:18vw 1fr;gap:2vw;align-items:center}
     .v2-logo,.v2-banner{height:100%;background-repeat:no-repeat;background-position:center}
     .v2-logo{background-size:contain}
@@ -41,18 +41,19 @@
     .v2-prize{display:flex;align-items:center;justify-content:center;text-align:center;gap:1.5vw;font-weight:900;font-size:clamp(36px,5vw,94px);text-shadow:0 8px 30px rgba(0,0,0,.85)}
     .v2-mode-pill{border:1px solid rgba(255,255,255,.24);border-radius:999px;padding:.5vw 1vw;font-size:clamp(18px,1.6vw,32px);color:var(--gold);white-space:nowrap}
     .v2-gift-left{display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,209,102,.55);background:rgba(17,24,39,.74);border-radius:999px;padding:.55vw 1vw;font-size:clamp(18px,1.6vw,32px);color:#ffe7a3;white-space:nowrap;box-shadow:0 14px 38px rgba(0,0,0,.34)}
-    .v2-machine{display:grid;gap:1.5vw;align-items:stretch;justify-content:center;grid-template-columns:repeat(var(--cols,3),minmax(0,1fr));min-height:0;margin-top:2vh}
-    .v2-slot{position:relative;display:flex;align-items:center;justify-content:center;min-height:18vh;border-radius:8px;border:1px solid rgba(255,209,102,.45);background:linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,.04));box-shadow:inset 0 0 50px rgba(255,209,102,.08),0 24px 70px rgba(0,0,0,.34);overflow:hidden}
+    .v2-main-area{min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr);gap:2vh}
+    .v2-machine{--slot-gap:1.5vw;display:flex;flex-wrap:wrap;gap:var(--slot-gap);align-items:stretch;align-content:stretch;justify-content:center;min-height:0;height:100%}
+    .v2-slot{position:relative;display:flex;align-items:center;justify-content:center;flex:0 1 calc(var(--slot-width,33.333%) - var(--slot-gap));min-height:calc(var(--slot-height,100%) - var(--slot-gap));border-radius:8px;border:1px solid rgba(255,209,102,.45);background:linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,.04));box-shadow:inset 0 0 50px rgba(255,209,102,.08),0 24px 70px rgba(0,0,0,.34);overflow:hidden}
     .v2-slot::before,.v2-slot::after{content:"";position:absolute;left:0;right:0;height:34%;z-index:1;pointer-events:none}
     .v2-slot::before{top:0;background:linear-gradient(180deg,rgba(0,0,0,.7),transparent)}
     .v2-slot::after{bottom:0;background:linear-gradient(0deg,rgba(0,0,0,.7),transparent)}
     .v2-name{position:relative;z-index:2;text-align:center;padding:1vh 1vw}
-    .v2-name strong{display:block;font-size:clamp(48px,7vw,150px);line-height:1.02}
-    .v2-name span{display:block;margin-top:1vh;font-size:clamp(22px,2.4vw,48px);color:#d9e6ff}
+    .v2-name strong{display:block;font-size:clamp(42px,min(calc(18vw / var(--cols,3)),calc(28vh / var(--rows,1))),160px);line-height:1.02}
+    .v2-name span{display:block;margin-top:1vh;font-size:clamp(20px,min(calc(7vw / var(--cols,3)),calc(10vh / var(--rows,1))),52px);color:#d9e6ff}
     .v2-slot.spinning .v2-name{animation:v2SlotPulse .14s linear infinite}
     .v2-slot.revealed{animation:v2WinnerPop .62s ease-out both;border-color:var(--gold)}
     .v2-poll-machine{grid-template-columns:repeat(var(--cols,3),minmax(0,1fr));align-items:end}
-    .v2-poll-card{position:relative;min-height:28vh;border:1px solid rgba(255,255,255,.2);border-radius:8px;background:rgba(7,12,24,.68);padding:2vh 1.4vw;display:flex;flex-direction:column;justify-content:flex-end;gap:1.4vh;box-shadow:0 24px 70px rgba(0,0,0,.34);overflow:hidden}
+    .v2-poll-card{position:relative;flex:0 1 calc(var(--slot-width,33.333%) - var(--slot-gap));min-height:calc(var(--slot-height,100%) - var(--slot-gap));border:1px solid rgba(255,255,255,.2);border-radius:8px;background:rgba(7,12,24,.68);padding:2vh 1.4vw;display:flex;flex-direction:column;justify-content:flex-end;gap:1.4vh;box-shadow:0 24px 70px rgba(0,0,0,.34);overflow:hidden}
     .v2-poll-card.revealed{animation:v2WinnerPop .58s ease-out both}
     .v2-poll-card.top{border-color:var(--gold);box-shadow:0 0 0 1px rgba(255,209,102,.8),0 0 55px rgba(255,209,102,.42),0 24px 80px rgba(0,0,0,.42)}
     .v2-poll-card.top::after{content:"";position:absolute;inset:-30%;background:radial-gradient(circle,rgba(255,209,102,.22),transparent 58%);animation:v2TopGlow 1.4s ease-in-out infinite alternate;pointer-events:none}
@@ -62,7 +63,7 @@
     .v2-poll-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#20d3c2,#ffd166);transition:width .8s cubic-bezier(.2,.8,.2,1)}
     .v2-poll-count{position:relative;z-index:1;text-align:center;font-size:clamp(22px,2.2vw,42px);font-weight:900;color:#dff7ff}
     .v2-poll-card.pending{opacity:.46}
-    .v2-poll-qr{grid-column:1/-1;justify-self:center;width:min(720px,86vw);min-height:54vh;border:1px solid rgba(255,255,255,.18);border-radius:8px;background:rgba(7,12,24,.76);padding:4vh 3vw;display:grid;place-items:center;gap:2vh;text-align:center;box-shadow:0 24px 90px rgba(0,0,0,.45)}
+    .v2-poll-qr{flex:0 1 min(720px,86vw);margin:auto;min-height:54vh;border:1px solid rgba(255,255,255,.18);border-radius:8px;background:rgba(7,12,24,.76);padding:4vh 3vw;display:grid;place-items:center;gap:2vh;text-align:center;box-shadow:0 24px 90px rgba(0,0,0,.45)}
     .v2-poll-qr-title{font-size:clamp(30px,4vw,72px);font-weight:900;line-height:1.08}
     .v2-poll-qr-canvas{padding:14px;background:#fff;border-radius:8px}
     .v2-poll-qr-link{max-width:100%;font-size:clamp(14px,1.2vw,22px);color:#dbeafe;word-break:break-all}
@@ -73,6 +74,25 @@
     @keyframes v2LeverKnob{0%,100%{transform:translateX(-50%) scale(1)}10%{transform:translateX(-50%) scale(1.04,.96)}34%{transform:translateX(-50%) scale(.94,1.07)}58%{transform:translateX(-50%) scale(.98,1.02)}88%{transform:translateX(-50%) scale(1.03,.97)}}
     @keyframes v2LeverBody{0%,100%{transform:translateY(-50%)}34%{transform:translateY(calc(-50% + .18vh))}48%{transform:translateY(calc(-50% - .08vh))}62%{transform:translateY(calc(-50% + .08vh))}}
     @keyframes v2LeverRailLight{0%{top:10%;opacity:.5}34%,70%{top:72%;opacity:.95}100%{top:10%;opacity:.5}}
+    .v2-lever{right:0;top:50%;width:10%;height:70vh;background:url("./assets/lever/lever-01.png") center/contain no-repeat;filter:drop-shadow(0 2vh 2.4vh rgba(0,0,0,.54));transform:translateY(-50%)}
+    .v2-lever::before,.v2-lever-rail,.v2-lever-arm,.v2-lever-base{display:none}
+    .v2-stage.is-spinning .v2-lever,.v2-stage.is-lever-pull .v2-lever{animation:v2LeverFrames 3s linear both}
+    .v2-stage.is-spinning .v2-lever-arm,.v2-stage.is-lever-pull .v2-lever-arm,.v2-stage.is-spinning .v2-lever-knob,.v2-stage.is-lever-pull .v2-lever-knob,.v2-stage.is-spinning .v2-lever-rail::after,.v2-stage.is-lever-pull .v2-lever-rail::after{animation:none}
+    @keyframes v2LeverFrames{
+      0%,7%{background-image:url("./assets/lever/lever-01.png")}
+      12%,19%{background-image:url("./assets/lever/lever-02.png")}
+      24%,31%{background-image:url("./assets/lever/lever-03.png")}
+      36%,39%{background-image:url("./assets/lever/lever-04.png")}
+      40%,90%{background-image:url("./assets/lever/lever-05.png")}
+      94%{background-image:url("./assets/lever/lever-04.png")}
+      97%{background-image:url("./assets/lever/lever-03.png")}
+      99%{background-image:url("./assets/lever/lever-02.png")}
+      100%{background-image:url("./assets/lever/lever-01.png")}
+    }
+    .v2-mode-pill,.v2-footer{display:none!important}
+    .v2-stage.is-poll .v2-stage-content{width:100%;padding-right:4vw}
+    .v2-stage.is-poll .v2-lever{display:none!important}
+    .v2-stage.is-clear .v2-prize,.v2-stage.is-clear .v2-machine,.v2-stage.is-clear .v2-lever{display:none!important}
     @keyframes v2TopGlow{from{transform:scale(.94);opacity:.55}to{transform:scale(1.06);opacity:1}}
   </style>
 </head>
@@ -86,7 +106,7 @@
         <div class="v2-logo" id="v2Logo"></div>
         <div class="v2-banner" id="v2Banner"></div>
       </div>
-      <div>
+      <div class="v2-main-area">
         <div class="v2-prize"><span id="v2ModeLabel" class="v2-mode-pill">V2</span><span id="v2PrizeName">Ready</span><span id="v2GiftLeft" class="v2-gift-left">Available --</span></div>
         <div id="v2Machine" class="v2-machine"></div>
       </div>

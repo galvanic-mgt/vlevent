@@ -66,6 +66,8 @@ function cleanWinner(p, sourceIndex = -1) {
     dept: String(p.dept || p.department || '').trim(),
     phone: String(p.phone || '').trim(),
     code: String(p.code || p.staffId || '').trim(),
+    table: String(p.table || '').trim(),
+    seat: String(p.seat || '').trim(),
     sourceIndex,
     key,
     keyId: keyIdFromKey(key),

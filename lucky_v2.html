@@ -87,6 +87,21 @@
     @keyframes v2LeverKnob{0%,100%{transform:translateX(-50%) scale(1)}10%{transform:translateX(-50%) scale(1.04,.96)}34%{transform:translateX(-50%) scale(.94,1.07)}58%{transform:translateX(-50%) scale(.98,1.02)}88%{transform:translateX(-50%) scale(1.03,.97)}}
     @keyframes v2LeverBody{0%,100%{transform:translateY(-50%)}34%{transform:translateY(calc(-50% + 2px))}48%{transform:translateY(calc(-50% - 1px))}62%{transform:translateY(calc(-50% + 1px))}}
     @keyframes v2LeverRailLight{0%{top:14px;opacity:.5}34%,70%{top:110px;opacity:.95}100%{top:14px;opacity:.5}}
+    .v2-lever{right:12px;top:45%;width:72px;height:310px;background:url("./assets/lever/lever-01.png") center/contain no-repeat;filter:drop-shadow(0 20px 24px rgba(0,0,0,.52));transform:translateY(-50%)}
+    .v2-lever::before,.v2-lever-rail,.v2-lever-arm,.v2-lever-base{display:none}
+    .v2-stage.is-spinning .v2-lever,.v2-stage.is-lever-pull .v2-lever{animation:v2LeverFrames 3s linear both}
+    .v2-stage.is-spinning .v2-lever-arm,.v2-stage.is-lever-pull .v2-lever-arm,.v2-stage.is-spinning .v2-lever-knob,.v2-stage.is-lever-pull .v2-lever-knob,.v2-stage.is-spinning .v2-lever-rail::after,.v2-stage.is-lever-pull .v2-lever-rail::after{animation:none}
+    @keyframes v2LeverFrames{
+      0%,7%{background-image:url("./assets/lever/lever-01.png")}
+      12%,19%{background-image:url("./assets/lever/lever-02.png")}
+      24%,31%{background-image:url("./assets/lever/lever-03.png")}
+      36%,39%{background-image:url("./assets/lever/lever-04.png")}
+      40%,90%{background-image:url("./assets/lever/lever-05.png")}
+      94%{background-image:url("./assets/lever/lever-04.png")}
+      97%{background-image:url("./assets/lever/lever-03.png")}
+      99%{background-image:url("./assets/lever/lever-02.png")}
+      100%{background-image:url("./assets/lever/lever-01.png")}
+    }
     @media(max-width:980px){.v2-shell{grid-template-columns:1fr}.v2-control{border-right:0;border-bottom:1px solid var(--line)}.v2-stage-wrap{min-height:auto}.v2-stage-content{padding:18px;grid-template-rows:80px 1fr 70px}.v2-brand{grid-template-columns:130px 1fr}.v2-machine{grid-template-columns:1fr!important}}
   </style>
 </head>
@@ -132,6 +147,7 @@
       <section class="v2-panel">
         <div class="v2-actions">
           <button id="v2ShowReady" class="v2-btn">Show Ready</button>
+          <button id="v2ShowScene" class="v2-btn gold">Show Lucky Draw Scene</button>
           <button id="v2Draw" class="v2-btn primary">Start Draw</button>
           <button id="v2Instant" class="v2-btn gold">Instant Draw</button>
           <button id="v2Redraw" class="v2-btn">Redraw Batch</button>
