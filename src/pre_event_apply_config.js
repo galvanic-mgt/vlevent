@@ -26,12 +26,12 @@ window.PRE_EVENT_APPLY_CONFIG = {
     { value: "own_return", time: "", label: "自行安排" }
   ],
   accommodationOptions: [
-    { value: "single_room_240", label: "單人房 +$240" },
+    { value: "single_room_240", label: "單人房 +$180" },
     { value: "twin_room", label: "雙人房" },
     { value: "no_accommodation", label: "不住宿" }
   ],
   mealOptions: [
-    { value: "non_vegetarian", label: "正常餐食 Non-Vegetarian" },
+    { value: "non_vegetarian", label: "Regular meal" },
     { value: "vegetarian", label: "素食者 Vegetarian" }
   ]
 };
