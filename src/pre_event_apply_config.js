@@ -31,7 +31,7 @@ window.PRE_EVENT_APPLY_CONFIG = {
     { value: "no_accommodation", label: "不住宿" }
   ],
   mealOptions: [
-    { value: "non_vegetarian", label: "Regular meal" },
+    { value: "non_vegetarian", label: "正常餐 Regular Meal" },
     { value: "vegetarian", label: "素食者 Vegetarian" }
   ]
 };
