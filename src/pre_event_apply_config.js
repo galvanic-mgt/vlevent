@@ -5,28 +5,30 @@ window.PRE_EVENT_APPLY_CONFIG = {
   revealDaysBeforeEvent: 7,
   transportOptions: [
     { value: "self_arrangement", label: "自行到場 Self-arrangement" },
-    { value: "airport_express", label: "機鐵來回 Airport Express" },
     { value: "shuttle_bus", label: "旅遊巴 Shuttle Bus" }
   ],
   goTimeOptions: [
-    { value: "17:30", label: "17:30" },
-    { value: "17:00", label: "17:00" }
+    { value: "2026-08-25T07:30", label: "25/8/2026 07:30" }
   ],
   pickupLocationOptions: [
-    { value: "brcc", time: "17:30", label: "BRCC 雙魚河鄉村會所 · 17:30" },
-    { value: "hvch", time: "17:00", label: "HVCH 跑馬地會所 · 17:00" },
-    { value: "hvrc", time: "17:30", label: "HVRC 跑馬地馬場 · 17:30" },
-    { value: "stch", time: "17:00", label: "STCH 沙田會所 · 17:00" },
-    { value: "strc", time: "17:30", label: "STRC 沙田馬場 · 17:30" }
+    { value: "prince_edward_20260825_0730", time: "2026-08-25T07:30", label: "太子 25/8/2026 07:30" },
+    { value: "tsuen_wan_west_20260825_0730", time: "2026-08-25T07:30", label: "荃灣西 25/8/2026 07:30" },
+    { value: "own_departure", time: "", label: "自行安排" }
   ],
-  fixedReturnTime: "23:00",
+  fixedReturnTime: "",
   returnTimeOptions: [
-    { value: "23:00", label: "23:00" }
+    { value: "2026-08-25T18:00", label: "25/8/2026 18:00" },
+    { value: "2026-08-25T22:00", label: "25/8/2026 22:00" }
   ],
   returnLocationOptions: [
-    { value: "admiralty", time: "23:00", label: "Admiralty 金鐘 · 23:00" },
-    { value: "mongkok", time: "23:00", label: "Mongkok 旺角 · 23:00" },
-    { value: "tai_wai", time: "23:00", label: "Tai Wai 大圍 · 23:00" }
+    { value: "tsuen_wan_west_20260825_1800", time: "2026-08-25T18:00", label: "荃灣西 25/8/2026 18:00" },
+    { value: "tsuen_wan_west_20260825_2200", time: "2026-08-25T22:00", label: "荃灣西 25/8/2026 22:00" },
+    { value: "own_return", time: "", label: "自行安排" }
+  ],
+  accommodationOptions: [
+    { value: "single_room_240", label: "單人房 +$240" },
+    { value: "twin_room", label: "雙人房" },
+    { value: "no_accommodation", label: "不住宿" }
   ],
   mealOptions: [
     { value: "non_vegetarian", label: "正常餐食 Non-Vegetarian" },

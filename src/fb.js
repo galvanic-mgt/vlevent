@@ -61,13 +61,18 @@ export const FB = {
       onValue?.(value, meta);
     };
 
-    if (typeof EventSource === 'undefined') {
+    const startPolling = () => {
+      if (timer) return;
       const poll = async () => {
         if (closed) return;
         try { emit(await FB.get(p), { type: 'poll' }); } catch (_) {}
       };
       poll();
       timer = setInterval(poll, fallbackMs);
+    };
+
+    if (typeof EventSource === 'undefined') {
+      startPolling();
       return () => { closed = true; clearInterval(timer); };
     }
 
@@ -87,6 +92,11 @@ export const FB = {
     source.addEventListener('patch', handle);
     source.onerror = () => {
       if (!closed) console.warn('[Firebase listen] stream interrupted', p);
+      if (!closed && source) {
+        source.close();
+        source = null;
+        startPolling();
+      }
     };
     return () => {
       closed = true;

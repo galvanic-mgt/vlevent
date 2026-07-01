@@ -9,8 +9,8 @@ let currentApplication = null;
 const TEXT = {
   defaultTitle: "活動前登記\nPre-event Application",
   guest: "嘉賓\nGuest",
-  checkingBatch: "正在核對員工證編號...\nChecking staff ID...",
-  batchNotFound: "找不到此員工證編號，請檢查後再試。\nStaff ID not found. Please check and try again.",
+  checkingBatch: "正在核對電話號碼...\nChecking mobile phone...",
+  batchNotFound: "找不到此電話號碼，請檢查後再試。\nMobile phone not found. Please check and try again.",
   loadingError: "未能載入活動資料，請稍後再試。\nCould not load this event. Please try again later.",
   lockedNotice: "報名截止日期已過，選擇已鎖定；特殊更改請由指定活動人員人工處理。\nApplication deadline has passed. Choices are locked; special changes must be handled manually by the event team.",
   editUntil: "你可於以下時間前更改選擇：\nYou may edit choices until:",
@@ -30,6 +30,7 @@ const TEXT = {
   pickupPoint: "出發地點\nPickup point",
   returnPoint: "回程地點\nReturn point",
   returnTime: "回程時間\nReturn time",
+  accommodation: "住宿\nAccommodation",
   meal: "餐飲\nMeal",
   tableSeat: "台號 座位\nTable Seat",
   luckyDraw: "抽獎結果\nLucky draw result"
@@ -148,7 +149,9 @@ function setCollapsed(el, collapsed) {
 function syncShuttleTimes() {
   const pickup = optionItem(PRE_EVENT_CONFIG.pickupLocationOptions, $("pickupLocation")?.value);
   const returnPoint = optionItem(PRE_EVENT_CONFIG.returnLocationOptions, $("returnLocation")?.value);
-  const returnTime = returnPoint?.time || PRE_EVENT_CONFIG.fixedReturnTime || $("returnTime")?.value || "23:00";
+  const returnTime = returnPoint
+    ? (returnPoint.time || "")
+    : (PRE_EVENT_CONFIG.fixedReturnTime || $("returnTime")?.value || "");
   if ($("goTime")) $("goTime").value = pickup?.time || "";
   if ($("returnTime")) $("returnTime").value = returnTime;
 }
@@ -261,6 +264,7 @@ function applyApplicationToForm(app) {
   $("pickupLocation").value = app.pickupLocation || "";
   $("returnTime").value = app.returnTime || "";
   $("returnLocation").value = app.returnLocation || "";
+  $("accommodation").value = app.accommodation || "no_accommodation";
   $("meal").value = app.meal || "non_vegetarian";
   $("remarks").value = app.remarks || "";
   syncShuttleTimes();
@@ -273,7 +277,7 @@ function updateChoiceVisibility() {
   syncShuttleTimes();
   setCollapsed($("choiceFields"), !attending);
   setCollapsed($("shuttleFields"), !attending || !shuttleSelected);
-  ["transport", "meal"].forEach(id => {
+  ["transport", "meal", "accommodation"].forEach(id => {
     const el = $(id);
     if (el) el.required = attending;
   });
@@ -309,11 +313,15 @@ function buildApplicationPayload() {
     transport,
     transportLabel: attending ? optionLabel(PRE_EVENT_CONFIG.transportOptions, transport) : "",
     goTime: shuttleSelected ? pickup?.time || $("goTime").value : "",
+    goTimeLabel: shuttleSelected ? optionLabel(PRE_EVENT_CONFIG.goTimeOptions, pickup?.time || $("goTime").value) : "",
     pickupLocation: shuttleSelected ? $("pickupLocation").value : "",
     pickupLocationLabel: shuttleSelected ? optionLabel(PRE_EVENT_CONFIG.pickupLocationOptions, $("pickupLocation").value) : "",
     returnTime: shuttleSelected ? returnTime : "",
+    returnTimeLabel: shuttleSelected ? optionLabel(PRE_EVENT_CONFIG.returnTimeOptions, returnTime) : "",
     returnLocation: shuttleSelected ? $("returnLocation").value : "",
     returnLocationLabel: shuttleSelected ? optionLabel(PRE_EVENT_CONFIG.returnLocationOptions, $("returnLocation").value) : "",
+    accommodation: attending ? $("accommodation").value : "",
+    accommodationLabel: attending ? optionLabel(PRE_EVENT_CONFIG.accommodationOptions, $("accommodation").value) : "",
     meal: attending ? $("meal").value : "",
     mealLabel: attending ? optionLabel(PRE_EVENT_CONFIG.mealOptions, $("meal").value) : "",
     remarks: $("remarks").value.trim(),
@@ -341,10 +349,11 @@ function renderDetails(app, guest, canReveal) {
   const rows = [
     [TEXT.attendance, app.attending === false ? TEXT.notAttending : TEXT.attending],
     [TEXT.transport, final.transportLabel || app.transportLabel || app.transport || ""],
-    [TEXT.pickupTime, final.pickupTime || final.goTime || app.goTime || ""],
+    [TEXT.pickupTime, final.pickupTime || final.goTime || app.goTimeLabel || app.goTime || ""],
     [TEXT.pickupPoint, final.pickupLocation || app.pickupLocationLabel || app.pickupLocation || ""],
     [TEXT.returnPoint, final.returnLocation || app.returnLocationLabel || app.returnLocation || ""],
-    [TEXT.returnTime, final.returnTime || app.returnTime || ""],
+    [TEXT.returnTime, final.returnTime || app.returnTimeLabel || app.returnTime || ""],
+    [TEXT.accommodation, final.accommodationLabel || app.accommodationLabel || app.accommodation || ""],
     [TEXT.meal, final.mealLabel || app.mealLabel || app.meal || ""],
     [TEXT.tableSeat, [final.table || guest.table, final.seat || guest.seat].filter(Boolean).join("  ")],
     [TEXT.luckyDraw, [guest.prize, roundText].filter(Boolean).join(" | ")]
@@ -465,6 +474,7 @@ async function boot() {
   fillSelect("pickupLocation", PRE_EVENT_CONFIG.pickupLocationOptions);
   fillSelect("returnTime", PRE_EVENT_CONFIG.returnTimeOptions);
   fillSelect("returnLocation", PRE_EVENT_CONFIG.returnLocationOptions);
+  fillSelect("accommodation", PRE_EVENT_CONFIG.accommodationOptions);
   fillSelect("meal", PRE_EVENT_CONFIG.mealOptions);
   syncShuttleTimes();
   bind();

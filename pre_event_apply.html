@@ -18,11 +18,11 @@
 
     <section id="loginPanel" class="pe-panel">
       <h2>登入<br><span class="pe-en">Login</span></h2>
-      <p class="pe-muted">請輸入員工證編號以查看或更改你的選擇。<br>Enter your staff ID to review or update your choices.</p>
+      <p class="pe-muted">請輸入電話號碼以查看或更改你的選擇。<br>Enter your mobile phone to review or update your choices.</p>
       <form id="loginForm" class="pe-form">
         <label class="pe-field">
-          <span>員工證編號<br><span class="pe-en">Staff ID</span></span>
-          <input id="batchInput" autocomplete="off" required />
+          <span>電話號碼<br><span class="pe-en">Mobile Phone</span></span>
+          <input id="batchInput" autocomplete="tel" inputmode="tel" required />
         </label>
         <button class="pe-primary" type="submit">繼續<br><span class="pe-en">Continue</span></button>
       </form>
@@ -72,6 +72,13 @@
             <label class="pe-field">
               <span>餐飲偏好<br><span class="pe-en">Meal preference</span></span>
               <select id="meal" required></select>
+            </label>
+          </section>
+
+          <section id="accommodationStep" class="pe-step">
+            <label class="pe-field">
+              <span>住宿<br><span class="pe-en">Accommodation</span></span>
+              <select id="accommodation" required></select>
             </label>
           </section>
         </div>

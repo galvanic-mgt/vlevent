@@ -39,6 +39,14 @@ function status(text, isError = false) {
   el.style.color = isError ? '#ff7b86' : '';
 }
 
+function withTimeout(promise, label, ms = 18000) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out. Check the connection, then try again.`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 function selectedPoll() {
   return selectedPid ? polls?.[selectedPid] || null : null;
 }
@@ -98,12 +106,12 @@ async function loadAll() {
     status('Missing event ID.', true);
     return;
   }
-  const [pollMap, nextUi, screen, eventInfo] = await Promise.all([
+  const [pollMap, nextUi, screen, eventInfo] = await withTimeout(Promise.all([
     getPolls(eid).catch(() => ({})),
     FB.get(`/events/${eid}/ui`).catch(() => ({})),
     FB.get(`/events/${eid}/ui/publicScreen`).catch(() => ({})),
     getEventInfo(eid).catch(() => ({}))
-  ]);
+  ]), 'Voting V2 loading');
   polls = pollMap || {};
   ui = nextUi || {};
   publicScreen = screen || {};
@@ -112,6 +120,7 @@ async function loadAll() {
   }
   document.title = `Voting Control${eventInfo?.meta?.name ? ` - ${eventInfo.meta.name}` : ''}`;
   render();
+  status(`Ready. ${Object.keys(polls || {}).length} polls loaded.`);
 }
 
 function setBusy(value) {
@@ -127,8 +136,8 @@ async function run(label, fn) {
   try {
     setBusy(true);
     status(`${label}...`);
-    await fn();
-    await loadAll();
+    await withTimeout(fn(), label, 22000);
+    await withTimeout(loadAll(), `${label} refresh`, 18000);
     status(`${label} complete.`);
   } catch (error) {
     console.error(`[Voting Control] ${label} failed`, error);
@@ -353,7 +362,12 @@ function bindControls() {
 
 async function boot() {
   bindControls();
-  await loadAll();
+  try {
+    await loadAll();
+  } catch (error) {
+    console.error('[Voting Control] initial load failed', error);
+    status(`Loading failed: ${error?.message || String(error)}`, true);
+  }
   if (FB.listen && eid) {
     FB.listen(`/events/${eid}/polls`, next => {
       polls = next || {};

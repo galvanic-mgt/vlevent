@@ -101,7 +101,8 @@ function renderEntrance(guest, app, eventInfo, ui) {
   const rows = [
     ["Seat", [final.table || guest.table, final.seat || guest.seat].filter(Boolean).join(" / ") || "-"],
     ["Menu", menuText],
-    ["Transport", [final.pickupTime || app.goTime, final.pickupLocation || app.pickupLocation, final.returnTime || app.returnTime].filter(Boolean).join(" | ") || "-"],
+    ["Transport", [final.pickupTime || app.goTimeLabel || app.goTime, final.pickupLocation || app.pickupLocationLabel || app.pickupLocation, final.returnTime || app.returnTimeLabel || app.returnTime].filter(Boolean).join(" | ") || "-"],
+    ["Accommodation", final.accommodationLabel || app.accommodationLabel || app.accommodation || "-"],
     ["Game area", gameStatus],
     ["Gift redemption", giftStatus],
     ["Voting", voteLink ? `<a href="${voteLink}">Open voting</a>` : "Voting not open"],

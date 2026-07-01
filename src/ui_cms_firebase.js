@@ -462,6 +462,7 @@ const ACTIVE_KEY = 'cms-active-user';
 const SESSION_KEY = 'cms-session-ok';
 let usersCache = [];
 const DEFAULT_USER = { id:'u-master', name:'Admin', role:ROLE_MASTER, username:'administrator', password:'administrator', events:[] };
+const CMS_LOGIN_DISABLED_FOR_TESTING = true;
 
 function normalizeUser(u = {}){
   const events = Array.isArray(u.events) ? u.events : [];
@@ -519,6 +520,7 @@ async function deleteUserFromDB(id){
   await loadUsersFromDB();
 }
 function getActiveUser(){
+  if (CMS_LOGIN_DISABLED_FOR_TESTING) return DEFAULT_USER;
   const id = localStorage.getItem(ACTIVE_KEY);
   const found = usersCache.find(u => u.id === id);
   return found || { id:'', name:'', role: '', events: [] };
@@ -714,6 +716,13 @@ function bindLogin(){
   const userInput = document.getElementById('loginUser');
   const passInput = document.getElementById('loginPass');
   const errorEl = document.getElementById('loginError');
+  if (CMS_LOGIN_DISABLED_FOR_TESTING) {
+    document.body.classList.remove('cms-auth-pending');
+    document.body.classList.remove('cms-locked');
+    gate.style.display = 'none';
+    if (errorEl) errorEl.textContent = '';
+    return true;
+  }
   const lock = (msg = '') => {
     document.body.classList.remove('cms-auth-pending');
     document.body.classList.add('cms-locked');

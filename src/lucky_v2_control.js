@@ -2,7 +2,6 @@ import { FB } from './fb.js';
 import {
   initEventFromUrl,
   getV2Summary,
-  loadV2Assets,
   setReady,
   drawV2,
   undoLastV2,
@@ -28,6 +27,14 @@ function status(text, isError = false) {
   if (!el) return;
   el.textContent = text || '';
   el.style.color = isError ? '#ff7b86' : '';
+}
+
+function withTimeout(promise, label, ms = 18000) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out. Check the connection, then try again.`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 function publicUrl() {
@@ -148,10 +155,11 @@ async function refreshAll({ keepPrize = true } = {}) {
     status('Missing event ID.', true);
     return;
   }
-  const [summary, assetInfo] = await Promise.all([
-    getV2Summary(eid),
-    loadV2Assets(eid)
-  ]);
+  const summary = await withTimeout(getV2Summary(eid), 'Lucky Draw V2 loading');
+  const assetInfo = {
+    title: summary.eventInfo?.info?.title || summary.eventInfo?.meta?.name || 'Event',
+    assets: summary.assets || {}
+  };
   lastSummary = summary;
   applyV2Assets(assetInfo);
   if (!keepPrize) renderPrizeOptions(summary);
@@ -169,8 +177,8 @@ async function runAction(label, fn) {
   try {
     setBusy(true);
     status(`${label}...`);
-    await fn();
-    await refreshAll();
+    await withTimeout(fn(), label, 26000);
+    await withTimeout(refreshAll(), `${label} refresh`, 18000);
     status(`${label} complete.`);
   } catch (error) {
     console.error(`[Lucky V2] ${label} failed`, error);
@@ -216,7 +224,7 @@ function bindControls() {
   }));
   $('v2Draw')?.addEventListener('click', () => runAction('Start draw', async () => {
     await showLuckyDrawScene('Lucky Draw drawing');
-    await drawV2(eid, { ...modeOptions(), revealDelay: 4600 });
+    await drawV2(eid, { ...modeOptions(), revealDelay: 3220 });
   }));
   $('v2Instant')?.addEventListener('click', () => runAction('Instant draw', async () => {
     await showLuckyDrawScene('Lucky Draw instant drawing');
@@ -226,14 +234,14 @@ function bindControls() {
     const id = selectedBatchId();
     if (!id) throw new Error('No revealed V2 batch to redraw.');
     await showLuckyDrawScene('Lucky Draw redraw');
-    await drawV2(eid, { ...modeOptions(), previousBatchId: id, redraw: true, revealDelay: 2600 });
+    await drawV2(eid, { ...modeOptions(), previousBatchId: id, redraw: true, revealDelay: 1820 });
   }));
   $('v2Reroll')?.addEventListener('click', () => runAction('Reroll selected', async () => {
     const id = selectedBatchId();
     if (!id) throw new Error('No revealed V2 batch to reroll.');
     if (selectedSlot < 0) throw new Error('Select a winner slot first.');
     await showLuckyDrawScene('Lucky Draw reroll');
-    await drawV2(eid, { ...modeOptions(), previousBatchId: id, replaceIndex: selectedSlot, revealDelay: 2200 });
+    await drawV2(eid, { ...modeOptions(), previousBatchId: id, replaceIndex: selectedSlot, revealDelay: 1540 });
     selectedSlot = -1;
   }));
   $('v2Undo')?.addEventListener('click', () => runAction('Undo last', async () => {
@@ -283,7 +291,12 @@ function bindControls() {
 async function boot() {
   bindControls();
   if ($('v2Mode')) $('v2Mode').dispatchEvent(new Event('change'));
-  await refreshAll({ keepPrize: false });
+  try {
+    await refreshAll({ keepPrize: false });
+  } catch (error) {
+    console.error('[Lucky V2] initial load failed', error);
+    status(`Loading failed: ${error?.message || String(error)}`, true);
+  }
   FB.listen?.(`${v2Root(eid)}/ui/stageState`, state => {
     lastState = state || {};
     renderV2Stage(lastState);

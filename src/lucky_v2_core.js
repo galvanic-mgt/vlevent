@@ -333,7 +333,7 @@ export async function drawV2(eid, opts = {}) {
     message: 'Drawing...'
   });
 
-  const delay = opts.instant ? 450 : Math.max(1200, Math.min(5200, Number(opts.revealDelay || 2800)));
+  const delay = opts.instant ? 450 : Math.max(1200, Math.min(5200, Number(opts.revealDelay || 1960)));
   await new Promise(resolve => setTimeout(resolve, delay));
 
   const patch = {};
@@ -463,7 +463,10 @@ export async function getV2Summary(eid) {
 }
 
 export async function loadV2Assets(eid) {
-  const [{ eventInfo, assets }] = await Promise.all([loadV2Context(eid)]);
+  const [eventInfo, assets] = await Promise.all([
+    getEventInfo(eid).catch(() => ({ meta: {}, info: {} })),
+    getAssets(eid).catch(() => ({}))
+  ]);
   const title = eventInfo?.info?.title || eventInfo?.meta?.name || 'Event';
   return { title, assets };
 }
