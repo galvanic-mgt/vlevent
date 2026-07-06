@@ -1,8 +1,12 @@
+import { localAssetUrl } from './local_assets.js';
+
 let spinTimer = null;
 let lastLeverKey = '';
+let lastMachineKey = '';
 
 function cssUrl(value) {
-  return value ? `url("${String(value).replaceAll('"', '\\"')}")` : '';
+  const src = localAssetUrl(value);
+  return src ? `url("${String(src).replaceAll('"', '\\"')}")` : '';
 }
 
 function setBg(id, value, size = '') {
@@ -59,12 +63,13 @@ function makeSlot(winner, index, status) {
   return slot;
 }
 
-function makePollCard(item, index, revealStep, showTop) {
+function makePollCard(item, index, revealStep, showTop, freshReveal) {
   const card = document.createElement('div');
   const revealed = index < revealStep;
   const isTop = item?.isTop && showTop && revealed;
-  card.className = `v2-poll-card ${revealed ? 'revealed' : 'pending'} ${isTop ? 'top' : ''}`;
+  card.className = `v2-poll-card ${revealed ? 'revealed' : 'pending'} ${freshReveal ? 'fresh' : ''} ${isTop ? 'top' : ''}`;
   card.style.animationDelay = `${index * 120}ms`;
+  card.setAttribute('aria-label', `${item?.text || `Option ${index + 1}`}${revealed ? ' revealed' : ' pending'}`);
 
   const label = document.createElement('div');
   label.className = 'v2-poll-label';
@@ -74,18 +79,16 @@ function makePollCard(item, index, revealStep, showTop) {
   track.className = 'v2-poll-track';
   const fill = document.createElement('div');
   fill.className = 'v2-poll-fill';
-  fill.style.width = revealed ? `${Math.max(4, Number(item?.percent || 0))}%` : '0%';
+  const width = revealed ? `${Math.max(4, Number(item?.percent || 0))}%` : '0%';
+  fill.style.setProperty('--target-width', width);
+  fill.style.width = freshReveal ? '0%' : width;
   track.append(fill);
-
-  const count = document.createElement('div');
-  count.className = 'v2-poll-count';
-  count.textContent = revealed ? `${Number(item?.count || 0)} votes` : 'Ready';
 
   const badge = document.createElement('div');
   badge.className = 'v2-poll-badge';
   badge.textContent = isTop ? 'TOP VOTE' : '';
 
-  card.append(badge, label, track, count);
+  card.append(badge, label, track);
   return card;
 }
 
@@ -96,9 +99,11 @@ function renderPollStage(machine, state) {
   const revealStep = Math.max(0, Math.min(items.length, Number(state.revealStep || 0)));
   machine.innerHTML = '';
   machine.classList.add('v2-poll-machine');
+  machine.classList.toggle('v2-poll-results-list', display !== 'qr');
   applyMachineLayout(machine, Math.max(1, items.length));
 
   if (display === 'qr') {
+    machine.classList.remove('v2-poll-results-list');
     const panel = document.createElement('div');
     panel.className = 'v2-poll-qr';
     const title = document.createElement('div');
@@ -125,7 +130,8 @@ function renderPollStage(machine, state) {
 
   const showTop = revealStep >= items.length || state.highlightTop === true;
   items.forEach((item, index) => {
-    machine.append(makePollCard(item, index, revealStep, showTop));
+    const freshReveal = revealStep >= items.length ? true : index === revealStep - 1;
+    machine.append(makePollCard(item, index, revealStep, showTop, freshReveal));
   });
 }
 
@@ -164,7 +170,7 @@ export function renderV2Stage(state = {}) {
     }
   }
   if (!machine) return;
-  machine.classList.remove('v2-poll-machine');
+  machine.classList.remove('v2-poll-machine', 'v2-poll-results-list');
 
   if (state.mode === 'poll' || state.kind === 'poll') {
     renderPollStage(machine, state);
@@ -178,13 +184,27 @@ export function renderV2Stage(state = {}) {
     : [{ name: 'READY', dept: '' }, { name: 'LUCKY', dept: '' }, { name: 'DRAW', dept: '' }];
   const count = Math.max(1, Number(state.batchSize || winners.length || 1));
   applyMachineLayout(machine, count);
+
+  const machineKey = JSON.stringify({
+    status: state.status || '',
+    phase: state.phase || '',
+    drawId: state.drawId || '',
+    batchSize: count,
+    winners: winners.map(w => [w?.keyId || '', w?.name || '', w?.seat || ''])
+  });
+  if (machineKey === lastMachineKey && state.status !== 'spinning') {
+    return;
+  }
+  lastMachineKey = machineKey;
   machine.innerHTML = '';
 
   if (state.status === 'clear') {
+    lastMachineKey = '';
     return;
   }
 
   if (state.status === 'spinning') {
+    lastMachineKey = '';
     for (let i = 0; i < count; i += 1) {
       machine.append(makeSlot(candidates[(i * 3) % candidates.length], i, 'spinning'));
     }

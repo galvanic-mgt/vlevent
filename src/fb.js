@@ -1,15 +1,80 @@
 import { CONFIG } from './config.js';
 
 // Build correct URL even for root-level PATCH ("/")
-const U = (p) => {
+const normalizePath = (p) => {
+  if (p === '/' || p === '' || !p) return '/';
+  return String(p).startsWith('/') ? String(p) : `/${p}`;
+};
+
+const remoteUrl = (p) => {
   const base = CONFIG.firebaseBase.replace(/\/$/, '');
-  if (p === '/' || p === '' || !p) return `${base}/.json`;
-  const path = String(p).startsWith('/') ? String(p) : `/${p}`;
+  const path = normalizePath(p);
+  if (path === '/') return `${base}/.json`;
   return `${base}${path}.json`;
 };
-export const firebaseUrl = U;
+
+function useLocalFirebaseProxy() {
+  return location.protocol === 'http:'
+    && ['127.0.0.1', 'localhost'].includes(location.hostname)
+    && location.port === '8000';
+}
+
+const proxyUrl = (p) => {
+  const url = new URL('/__firebase', location.origin);
+  url.searchParams.set('path', normalizePath(p));
+  return url.href;
+};
+
+const proxyStreamUrl = (p) => {
+  const url = new URL('/__firebase_stream', location.origin);
+  url.searchParams.set('path', normalizePath(p));
+  return url.href;
+};
+
+const requestUrl = (p) => useLocalFirebaseProxy() ? proxyUrl(p) : remoteUrl(p);
+export const firebaseUrl = requestUrl;
 
 const J = (x) => JSON.stringify(x);
+const localChannel = typeof BroadcastChannel !== 'undefined'
+  ? new BroadcastChannel('eva-local-firebase-ui')
+  : null;
+const LOCAL_STORAGE_KEY = 'eva-local-firebase-ui';
+
+function shouldLocalEcho(path) {
+  return useLocalFirebaseProxy() && normalizePath(path).includes('/ui/');
+}
+
+function relativeUpdate(watchPath, changedPath, data) {
+  if (watchPath === changedPath) return { path: '/', data };
+  if (watchPath !== '/' && changedPath.startsWith(`${watchPath}/`)) {
+    return { path: changedPath.slice(watchPath.length), data };
+  }
+  if (changedPath !== '/' && watchPath.startsWith(`${changedPath}/`)) {
+    let node = data;
+    const parts = watchPath.slice(changedPath.length).replace(/^\//, '').split('/').filter(Boolean);
+    for (const part of parts) {
+      if (node && typeof node === 'object' && part in node) node = node[part];
+      else return null;
+    }
+    return { path: '/', data: node };
+  }
+  return null;
+}
+
+function broadcastLocal(path, event, data) {
+  if (!shouldLocalEcho(path)) return;
+  const message = {
+    id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    path: normalizePath(path),
+    event,
+    data
+  };
+  localChannel?.postMessage(message);
+  try {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(message));
+  } catch (_) {}
+}
+
 async function readJson(res, path) {
   const data = await res.json().catch(() => null);
   if (!res.ok || (data && typeof data.error === 'string')) {
@@ -41,16 +106,23 @@ function applyStreamUpdate(current, path, data) {
 }
 
 export const FB = {
-  get:   async (p) => fetch(U(p)).then(r => readJson(r, p)),
-  put:   async (p, b) => fetch(U(p), { method:'PUT', body:J(b) }).then(r => readJson(r, p)),
-  patch: async (p, b) => fetch(U(p), { method:'PATCH', body:J(b) }).then(r => readJson(r, p)),
-  del:   async (p) => fetch(U(p), { method:'DELETE' }).then(r => readJson(r, p)),
+  get:   async (p) => fetch(requestUrl(p)).then(r => readJson(r, p)),
+  put:   async (p, b) => {
+    broadcastLocal(p, 'put', b ?? null);
+    return fetch(requestUrl(p), { method:'PUT', body:J(b) }).then(r => readJson(r, p));
+  },
+  patch: async (p, b) => fetch(requestUrl(p), { method:'PATCH', body:J(b) }).then(r => readJson(r, p)),
+  del:   async (p) => {
+    broadcastLocal(p, 'put', null);
+    return fetch(requestUrl(p), { method:'DELETE' }).then(r => readJson(r, p));
+  },
   listen: (p, onValue, options = {}) => {
     let closed = false;
     let current;
     let source = null;
     let timer = null;
     let lastKey = '';
+    const watchPath = normalizePath(p);
     const fallbackMs = Math.max(2000, Number(options.fallbackMs || 5000));
 
     const emit = (value, meta = {}) => {
@@ -71,9 +143,30 @@ export const FB = {
       timer = setInterval(poll, fallbackMs);
     };
 
+    const handleLocal = (event) => {
+      if (closed || !event?.data?.path) return;
+      const update = relativeUpdate(watchPath, event.data.path, event.data.data);
+      if (!update) return;
+      current = applyStreamUpdate(current, update.path, update.data);
+      emit(current, { type: event.data.event || 'local', path: update.path, local: true });
+    };
+    const handleStorage = (event) => {
+      if (closed || event.key !== LOCAL_STORAGE_KEY || !event.newValue) return;
+      try {
+        handleLocal({ data: JSON.parse(event.newValue) });
+      } catch (_) {}
+    };
+    localChannel?.addEventListener('message', handleLocal);
+    window.addEventListener('storage', handleStorage);
+
     if (typeof EventSource === 'undefined') {
       startPolling();
-      return () => { closed = true; clearInterval(timer); };
+      return () => {
+        closed = true;
+        clearInterval(timer);
+        localChannel?.removeEventListener('message', handleLocal);
+        window.removeEventListener('storage', handleStorage);
+      };
     }
 
     const handle = (event) => {
@@ -87,7 +180,7 @@ export const FB = {
       }
     };
 
-    source = new EventSource(U(p));
+    source = new EventSource(useLocalFirebaseProxy() ? proxyStreamUrl(p) : remoteUrl(p));
     source.addEventListener('put', handle);
     source.addEventListener('patch', handle);
     source.onerror = () => {
@@ -102,6 +195,8 @@ export const FB = {
       closed = true;
       if (source) source.close();
       if (timer) clearInterval(timer);
+      localChannel?.removeEventListener('message', handleLocal);
+      window.removeEventListener('storage', handleStorage);
     };
   }
 };

@@ -94,19 +94,49 @@ function objectValues(obj) {
   return obj && typeof obj === 'object' ? Object.values(obj) : [];
 }
 
+function withFirebaseTimeout(promise, label, ms = 15000) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`Firebase ${label} did not respond within ${Math.round(ms / 1000)}s.`));
+    }, ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+function optionalFirebaseRead(promise, label, fallback) {
+  return withFirebaseTimeout(promise, label, 12000).catch(error => {
+    console.warn(`[Lucky V2] optional ${label} failed`, error);
+    return fallback;
+  });
+}
+
 export function roundIdFor(name) {
   const clean = String(name || 'Extra Round').trim() || 'Extra Round';
   return `round_${keyIdFromKey(clean)}`;
 }
 
-export async function loadV2Context(eid) {
+export async function loadV2Context(eid, options = {}) {
+  const requirePeople = options.requirePeople === true;
+  const warnings = [];
+  const optionalRead = async (promise, label, fallback) => {
+    try {
+      return await withFirebaseTimeout(promise, label, 12000);
+    } catch (error) {
+      console.warn(`[Lucky V2] optional ${label} failed`, error);
+      warnings.push(error?.message || String(error));
+      return fallback;
+    }
+  };
   const [eventInfo, people, prizes, curPrizeId, v2, assets] = await Promise.all([
-    getEventInfo(eid).catch(() => ({ meta: {}, info: {} })),
-    getPeople(eid).catch(() => []),
-    getPrizes(eid).catch(() => []),
-    getCurrentPrizeIdRemote(eid).catch(() => null),
-    FB.get(v2Root(eid)).catch(() => ({})),
-    getAssets(eid).catch(() => ({}))
+    optionalRead(getEventInfo(eid), `event info read /events/${eid}/meta + /events/${eid}/info`, { meta: {}, info: {} }),
+    requirePeople
+      ? withFirebaseTimeout(getPeople(eid), `roster read /events/${eid}/people`)
+      : optionalRead(getPeople(eid), `roster read /events/${eid}/people`, []),
+    withFirebaseTimeout(getPrizes(eid), `prize read /events/${eid}/prizes`),
+    optionalRead(getCurrentPrizeIdRemote(eid), `current prize read /events/${eid}/currentPrizeId`, null),
+    withFirebaseTimeout(FB.get(v2Root(eid)), `Lucky V2 state read ${v2Root(eid)}`),
+    optionalRead(getAssets(eid), `asset read /events/${eid}/logo/banner/background/photos`, {})
   ]);
   return {
     eventInfo,
@@ -114,7 +144,8 @@ export async function loadV2Context(eid) {
     prizes: Array.isArray(prizes) ? prizes : [],
     curPrizeId,
     v2: v2 || {},
-    assets: assets || {}
+    assets: assets || {},
+    warnings
   };
 }
 
@@ -194,14 +225,15 @@ function applyIndexPatch(patch, path, winners, value) {
 }
 
 async function publishStage(eid, state) {
-  await FB.put(`${v2Root(eid)}/ui/stageState`, {
+  const path = `${v2Root(eid)}/ui/stageState`;
+  await withFirebaseTimeout(FB.put(path, {
     ...state,
     updatedAt: Date.now()
-  });
+  }), `stage-state write ${path}`);
 }
 
 export async function setReady(eid, opts = {}) {
-  const ctx = await loadV2Context(eid);
+  const ctx = opts.context || await loadV2Context(eid);
   const prize = ctx.prizes.find(p => p.id === opts.prizeId) || ctx.prizes.find(p => p.id === ctx.curPrizeId) || ctx.prizes[0] || {};
   const mode = opts.mode || 'main';
   const roundName = mode === 'extra' ? (opts.roundName || 'Extra Round') : '';
@@ -223,6 +255,42 @@ export async function setReady(eid, opts = {}) {
     message: 'Ready'
   });
   return { prize };
+}
+
+export async function previewSpin(eid, opts = {}) {
+  const ctx = opts.context || {};
+  const mode = opts.mode === 'extra' ? 'extra' : 'main';
+  const roundName = mode === 'extra' ? (opts.roundName || 'Extra Round') : '';
+  const roundId = mode === 'extra' ? roundIdFor(roundName) : 'main';
+  const prize = (ctx.prizes || []).find(p => p.id === opts.prizeId)
+    || (ctx.prizes || []).find(p => p.id === ctx.curPrizeId)
+    || (ctx.prizes || [])[0]
+    || {};
+  const giftStats = prize.id ? prizeAvailability(prize, ctx.v2 || {}, mode, roundId) : null;
+  const batchSize = Math.max(1, Math.min(10, Number(opts.batchSize || 1)));
+  const people = Array.isArray(ctx.people) ? ctx.people : [];
+  const candidates = people
+    .filter(p => p?.checkedIn && p?.name)
+    .slice(0, 42)
+    .map(p => ({ name: p.name || '', dept: p.dept || p.department || '' }));
+
+  await publishStage(eid, {
+    status: 'spinning',
+    phase: 'preview',
+    drawId: makeId('preview'),
+    mode,
+    modeLabel: modeLabel(mode),
+    roundId,
+    roundName,
+    currentPrizeId: prize.id || '',
+    currentPrizeName: prize.name || '',
+    prizeName: prize.name || 'Drawing',
+    giftStats,
+    batchSize,
+    winners: [],
+    candidateNames: candidates,
+    message: 'Drawing...'
+  });
 }
 
 function buildPool({ people, prizes, v2, mode, roundId, allowRepeat, ignoreBatchId = '', excludeKeyIds = new Set() }) {
@@ -256,7 +324,7 @@ export async function drawV2(eid, opts = {}) {
   const roundName = mode === 'extra' ? (opts.roundName || 'Extra Round') : '';
   const roundId = mode === 'extra' ? roundIdFor(roundName) : 'main';
   const batchSize = Math.max(1, Math.min(10, Number(opts.batchSize || 1)));
-  const ctx = await loadV2Context(eid);
+  const ctx = await loadV2Context(eid, { requirePeople: true });
   const prize = ctx.prizes.find(p => p.id === opts.prizeId) || ctx.prizes.find(p => p.id === ctx.curPrizeId) || ctx.prizes[0];
   if (!prize) throw new Error('No prize is selected.');
 
@@ -372,7 +440,7 @@ export async function drawV2(eid, opts = {}) {
     time: now
   };
   patch['ui/lastBatchId'] = drawId;
-  await FB.patch(v2Root(eid), patch);
+  await withFirebaseTimeout(FB.patch(v2Root(eid), patch), `draw result write ${v2Root(eid)}`);
 
   const replacedCount = previous?.id ? previousWinners.length : 0;
   const v2UsedAfter = Math.max(0, giftStatsBefore.v2Used - replacedCount + winners.length);
@@ -422,7 +490,7 @@ export async function undoLastV2(eid) {
   applyIndexPatch(patch, keyPath, batch.winners || [], null);
   patch[`auditLog/${makeId('audit')}`] = { action: 'undo', drawId: batch.id, time: Date.now() };
   patch['ui/lastBatchId'] = null;
-  await FB.patch(v2Root(eid), patch);
+  await withFirebaseTimeout(FB.patch(v2Root(eid), patch), `undo write ${v2Root(eid)}`);
   await publishStage(eid, {
     status: 'ready',
     phase: 'ready',

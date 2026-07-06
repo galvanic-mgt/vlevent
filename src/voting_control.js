@@ -42,7 +42,7 @@ function status(text, isError = false) {
 function withTimeout(promise, label, ms = 18000) {
   let timer;
   const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out. Check the connection, then try again.`)), ms);
+    timer = setTimeout(() => reject(new Error(`${label} did not respond within ${Math.round(ms / 1000)}s. The voting control page is waiting for that Firebase/local-server step, so check that specific connection/path and try again.`)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
@@ -154,11 +154,11 @@ function requirePoll() {
 }
 
 async function writeLegacyStage(patch) {
-  await FB.patch(`/events/${eid}/ui`, patch);
+  await withTimeout(FB.patch(`/events/${eid}/ui`, patch), `legacy voting-stage write /events/${eid}/ui`, 12000);
 }
 
 async function writePublicScreen(state) {
-  await FB.put(`/events/${eid}/ui/publicScreen`, state);
+  await withTimeout(FB.put(`/events/${eid}/ui/publicScreen`, state), `public-screen write /events/${eid}/ui/publicScreen`, 12000);
 }
 
 async function setStandby() {
@@ -185,7 +185,7 @@ async function showQr() {
 
 async function openVoting() {
   const poll = requirePoll();
-  await setActive(eid, selectedPid, true);
+  await withTimeout(setActive(eid, selectedPid, true), `poll active write /events/${eid}/polls/${selectedPid}`, 12000);
   await writeLegacyStage({
     currentPollId: selectedPid,
     showPollQR: true,
@@ -198,14 +198,14 @@ async function openVoting() {
 async function closeVoting() {
   const poll = requirePoll();
   if (totalVotes(poll) === 0 && !confirm('Close voting with 0 votes?')) return;
-  await setActive(eid, selectedPid, false);
+  await withTimeout(setActive(eid, selectedPid, false), `poll active write /events/${eid}/polls/${selectedPid}`, 12000);
 }
 
 async function startResults() {
   const poll = requirePoll();
   if (poll.active !== false) {
     if (!confirm('Voting is still open. Close voting and reveal results?')) return;
-    await setActive(eid, selectedPid, false);
+    await withTimeout(setActive(eid, selectedPid, false), `poll active write /events/${eid}/polls/${selectedPid}`, 12000);
   }
   const trigger = Date.now();
   await writeLegacyStage({

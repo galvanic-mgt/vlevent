@@ -3,6 +3,7 @@ import {
   initEventFromUrl,
   getV2Summary,
   setReady,
+  previewSpin,
   drawV2,
   undoLastV2,
   clearV2Stage,
@@ -32,7 +33,7 @@ function status(text, isError = false) {
 function withTimeout(promise, label, ms = 18000) {
   let timer;
   const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out. Check the connection, then try again.`)), ms);
+    timer = setTimeout(() => reject(new Error(`${label} did not respond within ${Math.round(ms / 1000)}s. The control page is waiting for that Firebase/local-server step, so check that specific connection/path and try again.`)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
@@ -49,12 +50,13 @@ function publicUrl() {
 }
 
 async function showLuckyDrawScene(message = 'Lucky Draw V2 scene') {
-  await FB.put(`/events/${eid}/ui/publicScreen`, {
+  const path = `/events/${eid}/ui/publicScreen`;
+  await withTimeout(FB.put(path, {
     mode: 'v2Draw',
     kind: 'luckyDraw',
     message,
     updatedAt: Date.now()
-  });
+  }), `public-screen write ${path}`, 12000);
 }
 
 function modeOptions() {
@@ -169,7 +171,10 @@ async function refreshAll({ keepPrize = true } = {}) {
   const state = summary.v2?.ui?.stageState || { status: 'clear', message: 'V2 control ready' };
   lastState = state;
   renderV2Stage(state);
-  status(`Ready. Checked-in roster: ${(summary.people || []).filter(p => p?.checkedIn).length}. Active V2 batches: ${(summary.active || []).length}.`);
+  const warningText = Array.isArray(summary.warnings) && summary.warnings.length
+    ? ` Warning: ${summary.warnings.join(' | ')}`
+    : '';
+  status(`Ready. Checked-in roster: ${(summary.people || []).filter(p => p?.checkedIn).length}. Active V2 batches: ${(summary.active || []).length}.${warningText}`, Boolean(warningText));
 }
 
 async function runAction(label, fn) {
@@ -177,7 +182,7 @@ async function runAction(label, fn) {
   try {
     setBusy(true);
     status(`${label}...`);
-    await withTimeout(fn(), label, 26000);
+    await withTimeout(fn(), `${label} action`, 26000);
     await withTimeout(refreshAll(), `${label} refresh`, 18000);
     status(`${label} complete.`);
   } catch (error) {
@@ -220,28 +225,32 @@ function bindControls() {
   }));
   $('v2ShowReady')?.addEventListener('click', () => runAction('Show ready', async () => {
     await showLuckyDrawScene('Lucky Draw ready');
-    await setReady(eid, modeOptions());
+    await setReady(eid, { ...modeOptions(), context: lastSummary });
   }));
   $('v2Draw')?.addEventListener('click', () => runAction('Start draw', async () => {
     await showLuckyDrawScene('Lucky Draw drawing');
-    await drawV2(eid, { ...modeOptions(), revealDelay: 3220 });
+    await previewSpin(eid, { ...modeOptions(), context: lastSummary });
+    await drawV2(eid, { ...modeOptions(), revealDelay: 2200 });
   }));
   $('v2Instant')?.addEventListener('click', () => runAction('Instant draw', async () => {
     await showLuckyDrawScene('Lucky Draw instant drawing');
+    await previewSpin(eid, { ...modeOptions(), context: lastSummary });
     await drawV2(eid, { ...modeOptions(), instant: true });
   }));
   $('v2Redraw')?.addEventListener('click', () => runAction('Redraw batch', async () => {
     const id = selectedBatchId();
     if (!id) throw new Error('No revealed V2 batch to redraw.');
     await showLuckyDrawScene('Lucky Draw redraw');
-    await drawV2(eid, { ...modeOptions(), previousBatchId: id, redraw: true, revealDelay: 1820 });
+    await previewSpin(eid, { ...modeOptions(), context: lastSummary });
+    await drawV2(eid, { ...modeOptions(), previousBatchId: id, redraw: true, revealDelay: 1300 });
   }));
   $('v2Reroll')?.addEventListener('click', () => runAction('Reroll selected', async () => {
     const id = selectedBatchId();
     if (!id) throw new Error('No revealed V2 batch to reroll.');
     if (selectedSlot < 0) throw new Error('Select a winner slot first.');
     await showLuckyDrawScene('Lucky Draw reroll');
-    await drawV2(eid, { ...modeOptions(), previousBatchId: id, replaceIndex: selectedSlot, revealDelay: 1540 });
+    await previewSpin(eid, { ...modeOptions(), context: lastSummary, batchSize: 1 });
+    await drawV2(eid, { ...modeOptions(), previousBatchId: id, replaceIndex: selectedSlot, revealDelay: 1100 });
     selectedSlot = -1;
   }));
   $('v2Undo')?.addEventListener('click', () => runAction('Undo last', async () => {
