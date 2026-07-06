@@ -3,6 +3,8 @@ import { localAssetUrl } from './local_assets.js';
 let spinTimer = null;
 let lastLeverKey = '';
 let lastMachineKey = '';
+let lastPollMachineKey = '';
+let fitFrame = 0;
 
 function cssUrl(value) {
   const src = localAssetUrl(value);
@@ -44,6 +46,138 @@ function clearSpin() {
   spinTimer = null;
 }
 
+function px(value, fallback) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function lineHeightFor(el, fontSize) {
+  const value = window.getComputedStyle(el).lineHeight;
+  return value === 'normal' ? fontSize * 1.08 : px(value, fontSize * 1.08);
+}
+
+function fitOneLine(el, minSize) {
+  if (!el || !el.parentElement || el.clientWidth <= 0) return;
+  const parentSize = px(window.getComputedStyle(el.parentElement).fontSize, 48);
+  let low = minSize;
+  let high = parentSize;
+  let best = low;
+
+  el.style.fontSize = `${high}px`;
+  for (let i = 0; i < 8; i += 1) {
+    const mid = (low + high) / 2;
+    el.style.fontSize = `${mid}px`;
+    const fits = el.scrollWidth <= el.clientWidth + 1;
+    if (fits) {
+      best = mid;
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+  el.style.fontSize = `${Math.floor(best)}px`;
+}
+
+function slotTextFits(strong, size) {
+  const slot = strong.closest('.v2-slot');
+  const wrap = strong.closest('.v2-name');
+  if (!slot || !wrap || slot.clientWidth <= 0 || slot.clientHeight <= 0) return true;
+  strong.style.fontSize = `${size}px`;
+  const maxNameHeight = lineHeightFor(strong, size) * 3 + 2;
+  return strong.scrollHeight <= maxNameHeight
+    && wrap.scrollHeight <= slot.clientHeight - 6
+    && wrap.scrollWidth <= slot.clientWidth - 6;
+}
+
+function fitWinnerNames() {
+  const names = Array.from(document.querySelectorAll('#v2Machine .v2-slot .v2-name strong'));
+  if (!names.length) return;
+  names.forEach(el => { el.style.fontSize = ''; });
+  const maxSize = Math.min(...names.map(el => px(window.getComputedStyle(el).fontSize, 72)));
+  const minSize = Math.max(18, Math.min(34, maxSize * 0.46));
+  let low = minSize;
+  let high = maxSize;
+  let best = minSize;
+
+  for (let i = 0; i < 9; i += 1) {
+    const mid = (low + high) / 2;
+    const fits = names.every(el => slotTextFits(el, mid));
+    if (fits) {
+      best = mid;
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+  names.forEach(el => { el.style.fontSize = `${Math.floor(best)}px`; });
+}
+
+function metaLineFits(el, size) {
+  const slot = el.closest('.v2-slot');
+  const wrap = el.closest('.v2-name');
+  if (!slot || !wrap || slot.clientWidth <= 0 || slot.clientHeight <= 0) return true;
+  el.style.fontSize = `${size}px`;
+  return el.scrollWidth <= el.clientWidth + 1
+    && wrap.scrollHeight <= slot.clientHeight - 6
+    && wrap.scrollWidth <= slot.clientWidth - 6;
+}
+
+function fitWinnerMeta() {
+  const lines = Array.from(document.querySelectorAll('#v2Machine .v2-slot .v2-name span'))
+    .filter(el => String(el.textContent || '').trim());
+  if (!lines.length) return;
+  lines.forEach(el => { el.style.fontSize = ''; });
+  const maxSize = Math.min(...lines.map(el => px(window.getComputedStyle(el).fontSize, 32)));
+  const minSize = Math.max(12, Math.min(22, maxSize * 0.52));
+  let low = minSize;
+  let high = maxSize;
+  let best = minSize;
+
+  for (let i = 0; i < 8; i += 1) {
+    const mid = (low + high) / 2;
+    const fits = lines.every(el => metaLineFits(el, mid));
+    if (fits) {
+      best = mid;
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+  lines.forEach(el => { el.style.fontSize = `${Math.floor(best)}px`; });
+}
+
+function fitStageText() {
+  fitOneLine(document.getElementById('v2PrizeName'), 18);
+  fitOneLine(document.getElementById('v2GiftLeft'), 12);
+  fitWinnerNames();
+  fitWinnerMeta();
+}
+
+function scheduleTextFit() {
+  if (fitFrame) cancelAnimationFrame(fitFrame);
+  fitFrame = requestAnimationFrame(() => {
+    fitFrame = 0;
+    fitStageText();
+  });
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', scheduleTextFit);
+}
+
+function uniqueParts(parts) {
+  const seen = new Set();
+  return parts.map(part => String(part || '').trim()).filter(part => {
+    if (!part || seen.has(part)) return false;
+    seen.add(part);
+    return true;
+  });
+}
+
+function winnerCodeLine(winner = {}) {
+  return uniqueParts([winner.code, winner.table || winner.seat]).join(' / ');
+}
+
 function makeSlot(winner, index, status) {
   const slot = document.createElement('button');
   slot.type = 'button';
@@ -54,11 +188,12 @@ function makeSlot(winner, index, status) {
   const strong = document.createElement('strong');
   strong.textContent = winner?.name || '---';
   const dept = document.createElement('span');
+  dept.className = 'v2-dept';
   dept.textContent = winner?.dept || '';
-  const seat = document.createElement('span');
-  seat.className = 'v2-seat';
-  seat.textContent = winner?.seat ? `Seat ${winner.seat}` : '';
-  name.append(strong, dept, seat);
+  const code = document.createElement('span');
+  code.className = 'v2-code';
+  code.textContent = winnerCodeLine(winner);
+  name.append(strong, dept, code);
   slot.append(name);
   return slot;
 }
@@ -97,9 +232,21 @@ function renderPollStage(machine, state) {
   const items = Array.isArray(state.items) ? state.items : [];
   const display = state.pollDisplay || 'results';
   const revealStep = Math.max(0, Math.min(items.length, Number(state.revealStep || 0)));
-  machine.innerHTML = '';
   machine.classList.add('v2-poll-machine');
   machine.classList.toggle('v2-poll-results-list', display !== 'qr');
+  const pollMachineKey = JSON.stringify({
+    pollId: state.pollId || '',
+    display,
+    revealStep,
+    highlightTop: state.highlightTop === true,
+    items: items.map(item => [item?.id || '', item?.text || '', Number(item?.percent || 0), item?.isTop === true])
+  });
+  if (pollMachineKey === lastPollMachineKey) {
+    scheduleTextFit();
+    return;
+  }
+  lastPollMachineKey = pollMachineKey;
+  machine.innerHTML = '';
   applyMachineLayout(machine, Math.max(1, items.length));
 
   if (display === 'qr') {
@@ -174,9 +321,11 @@ export function renderV2Stage(state = {}) {
 
   if (state.mode === 'poll' || state.kind === 'poll') {
     renderPollStage(machine, state);
+    scheduleTextFit();
     return;
   }
 
+  lastPollMachineKey = '';
   clearSpin();
   const winners = Array.isArray(state.winners) ? state.winners : [];
   const candidates = Array.isArray(state.candidateNames) && state.candidateNames.length
@@ -190,9 +339,10 @@ export function renderV2Stage(state = {}) {
     phase: state.phase || '',
     drawId: state.drawId || '',
     batchSize: count,
-    winners: winners.map(w => [w?.keyId || '', w?.name || '', w?.seat || ''])
+    winners: winners.map(w => [w?.keyId || '', w?.name || '', w?.code || '', w?.table || '', w?.seat || ''])
   });
   if (machineKey === lastMachineKey && state.status !== 'spinning') {
+    scheduleTextFit();
     return;
   }
   lastMachineKey = machineKey;
@@ -200,6 +350,7 @@ export function renderV2Stage(state = {}) {
 
   if (state.status === 'clear') {
     lastMachineKey = '';
+    scheduleTextFit();
     return;
   }
 
@@ -216,9 +367,13 @@ export function renderV2Stage(state = {}) {
         const dept = slot.querySelector('span');
         if (strong) strong.textContent = pick.name || '---';
         if (dept) dept.textContent = pick.dept || '';
+        const code = slot.querySelector('.v2-code');
+        if (code) code.textContent = winnerCodeLine(pick);
         slot.style.animationDelay = `${i * 70}ms`;
       });
+      scheduleTextFit();
     }, 90);
+    scheduleTextFit();
     return;
   }
 
@@ -228,4 +383,5 @@ export function renderV2Stage(state = {}) {
     slot.style.animationDelay = `${index * 130}ms`;
     machine.append(slot);
   });
+  scheduleTextFit();
 }

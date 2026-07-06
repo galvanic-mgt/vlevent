@@ -210,7 +210,13 @@ function checkedInPool(people) {
 function candidateNames(pool) {
   return shuffle(pool)
     .slice(0, 42)
-    .map(({ p }) => ({ name: p.name || '', dept: p.dept || '' }))
+    .map(({ p }) => ({
+      name: p.name || '',
+      dept: p.dept || p.department || '',
+      code: p.code || p.staffId || '',
+      table: p.table || '',
+      seat: p.seat || ''
+    }))
     .filter(p => p.name);
 }
 
@@ -272,7 +278,13 @@ export async function previewSpin(eid, opts = {}) {
   const candidates = people
     .filter(p => p?.checkedIn && p?.name)
     .slice(0, 42)
-    .map(p => ({ name: p.name || '', dept: p.dept || p.department || '' }));
+    .map(p => ({
+      name: p.name || '',
+      dept: p.dept || p.department || '',
+      code: p.code || p.staffId || '',
+      table: p.table || '',
+      seat: p.seat || ''
+    }));
 
   await publishStage(eid, {
     status: 'spinning',

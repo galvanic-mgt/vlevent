@@ -12,8 +12,8 @@ import {
   prizeAvailability,
   roundIdFor,
   v2Root
-} from './lucky_v2_core.js?v=20260706b';
-import { applyV2Assets, renderV2Stage } from './lucky_v2_stage.js?v=20260706b';
+} from './lucky_v2_core.js?v=20260707a';
+import { applyV2Assets, renderV2Stage } from './lucky_v2_stage.js?v=20260707c';
 
 const eid = initEventFromUrl();
 let selectedSlot = -1;
