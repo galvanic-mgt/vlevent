@@ -1,4 +1,4 @@
-import { FB } from './fb.js';
+import { FB } from './fb.js?v=20260706b';
 import {
   initEventFromUrl,
   getV2Summary,
@@ -12,8 +12,8 @@ import {
   prizeAvailability,
   roundIdFor,
   v2Root
-} from './lucky_v2_core.js';
-import { applyV2Assets, renderV2Stage } from './lucky_v2_stage.js';
+} from './lucky_v2_core.js?v=20260706b';
+import { applyV2Assets, renderV2Stage } from './lucky_v2_stage.js?v=20260706b';
 
 const eid = initEventFromUrl();
 let selectedSlot = -1;
@@ -309,7 +309,7 @@ async function boot() {
   FB.listen?.(`${v2Root(eid)}/ui/stageState`, state => {
     lastState = state || {};
     renderV2Stage(lastState);
-  }, { fallbackMs: 3000 });
+  }, { fallbackMs: 3000, transport: 'poll' });
 }
 
 boot();

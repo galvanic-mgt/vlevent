@@ -1,4 +1,4 @@
-import { FB, firebaseUrl } from './fb.js';
+import { FB, firebaseUrl } from './fb.js?v=20260706b';
 let CURRENT_EVENT_ID=null;
 export function getCurrentEventId(){return CURRENT_EVENT_ID;}
 export function setCurrentEventId(id){CURRENT_EVENT_ID=id||null;const u=new URL(location.href);if(id)u.searchParams.set('event',id);else u.searchParams.delete('event');history.replaceState(null,'',u);}

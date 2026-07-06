@@ -169,6 +169,16 @@ export const FB = {
       };
     }
 
+    if (options.transport === 'poll' || options.pollOnly === true) {
+      startPolling();
+      return () => {
+        closed = true;
+        clearInterval(timer);
+        localChannel?.removeEventListener('message', handleLocal);
+        window.removeEventListener('storage', handleStorage);
+      };
+    }
+
     const handle = (event) => {
       if (closed) return;
       try {

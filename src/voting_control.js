@@ -1,6 +1,6 @@
-import { FB } from './fb.js';
-import { getPolls, getEventInfo } from './core_firebase.js';
-import { setActive, voteCountsFromPoll } from './polls_public_firebase.js';
+import { FB } from './fb.js?v=20260706b';
+import { getPolls, getEventInfo } from './core_firebase.js?v=20260706b';
+import { setActive, voteCountsFromPoll } from './polls_public_firebase.js?v=20260706b';
 
 const url = new URL(location.href);
 const eid = url.searchParams.get('event') || '';
@@ -373,15 +373,15 @@ async function boot() {
       polls = next || {};
       if (!selectedPid || !polls[selectedPid]) selectedPid = Object.keys(polls)[0] || '';
       render();
-    }, { fallbackMs: 4000 });
+    }, { fallbackMs: 4000, transport: 'poll' });
     FB.listen(`/events/${eid}/ui`, next => {
       ui = next || {};
       render();
-    }, { fallbackMs: 4000 });
+    }, { fallbackMs: 4000, transport: 'poll' });
     FB.listen(`/events/${eid}/ui/publicScreen`, next => {
       publicScreen = next || {};
       render();
-    }, { fallbackMs: 4000 });
+    }, { fallbackMs: 4000, transport: 'poll' });
   }
 }
 

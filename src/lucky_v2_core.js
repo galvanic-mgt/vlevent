@@ -1,4 +1,4 @@
-import { FB } from './fb.js';
+import { FB } from './fb.js?v=20260706b';
 import {
   getPeople,
   getPrizes,
@@ -6,7 +6,7 @@ import {
   getEventInfo,
   getAssets,
   setCurrentEventId
-} from './core_firebase.js';
+} from './core_firebase.js?v=20260706b';
 
 export function getEventIdFromUrl() {
   const params = new URL(location.href).searchParams;
