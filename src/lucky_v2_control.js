@@ -12,8 +12,8 @@ import {
   prizeAvailability,
   roundIdFor,
   v2Root
-} from './lucky_v2_core.js?v=20260707a';
-import { applyV2Assets, renderV2Stage } from './lucky_v2_stage.js?v=20260707c';
+} from './lucky_v2_core.js?v=20260709a';
+import { applyV2Assets, renderV2Stage } from './lucky_v2_stage.js?v=20260709a';
 
 const eid = initEventFromUrl();
 let selectedSlot = -1;
@@ -228,20 +228,20 @@ function bindControls() {
     await setReady(eid, { ...modeOptions(), context: lastSummary });
   }));
   $('v2Draw')?.addEventListener('click', () => runAction('Start draw', async () => {
-    await showLuckyDrawScene('Lucky Draw drawing');
     await previewSpin(eid, { ...modeOptions(), context: lastSummary });
+    await showLuckyDrawScene('Lucky Draw drawing');
     await drawV2(eid, { ...modeOptions(), revealDelay: 2200 });
   }));
   $('v2Instant')?.addEventListener('click', () => runAction('Instant draw', async () => {
-    await showLuckyDrawScene('Lucky Draw instant drawing');
     await previewSpin(eid, { ...modeOptions(), context: lastSummary });
+    await showLuckyDrawScene('Lucky Draw instant drawing');
     await drawV2(eid, { ...modeOptions(), instant: true });
   }));
   $('v2Redraw')?.addEventListener('click', () => runAction('Redraw batch', async () => {
     const id = selectedBatchId();
     if (!id) throw new Error('No revealed V2 batch to redraw.');
+    await previewSpin(eid, { ...modeOptions(), context: lastSummary, previousBatchId: id, redraw: true });
     await showLuckyDrawScene('Lucky Draw redraw');
-    await previewSpin(eid, { ...modeOptions(), context: lastSummary });
     await drawV2(eid, { ...modeOptions(), previousBatchId: id, redraw: true, revealDelay: 1300 });
   }));
   $('v2Reroll')?.addEventListener('click', () => runAction('Reroll selected', async () => {
@@ -249,7 +249,6 @@ function bindControls() {
     if (!id) throw new Error('No revealed V2 batch to reroll.');
     if (selectedSlot < 0) throw new Error('Select a winner slot first.');
     await showLuckyDrawScene('Lucky Draw reroll');
-    await previewSpin(eid, { ...modeOptions(), context: lastSummary, batchSize: 1 });
     await drawV2(eid, { ...modeOptions(), previousBatchId: id, replaceIndex: selectedSlot, revealDelay: 1100 });
     selectedSlot = -1;
   }));

@@ -178,10 +178,10 @@ function winnerCodeLine(winner = {}) {
   return uniqueParts([winner.code, winner.table || winner.seat]).join(' / ');
 }
 
-function makeSlot(winner, index, status) {
+function makeSlot(winner, index, status, options = {}) {
   const slot = document.createElement('button');
   slot.type = 'button';
-  slot.className = `v2-slot ${status === 'spinning' ? 'spinning' : ''} ${status === 'revealed' ? 'revealed' : ''}`;
+  slot.className = `v2-slot ${status === 'spinning' ? 'spinning' : ''} ${status === 'revealed' ? 'revealed' : ''} ${options.quiet ? 'quiet' : ''}`;
   slot.dataset.index = String(index);
   const name = document.createElement('div');
   name.className = 'v2-name';
@@ -208,7 +208,16 @@ function makePollCard(item, index, revealStep, showTop, freshReveal) {
 
   const label = document.createElement('div');
   label.className = 'v2-poll-label';
-  label.textContent = item?.text || `Option ${index + 1}`;
+  const labelText = document.createElement('span');
+  labelText.textContent = item?.text || `Option ${index + 1}`;
+  label.append(labelText);
+  if (isTop) {
+    const crown = document.createElement('span');
+    crown.className = 'v2-poll-crown';
+    crown.setAttribute('aria-label', 'Winner');
+    crown.textContent = '\u{1F451}';
+    label.append(crown);
+  }
 
   const track = document.createElement('div');
   track.className = 'v2-poll-track';
@@ -221,7 +230,7 @@ function makePollCard(item, index, revealStep, showTop, freshReveal) {
 
   const badge = document.createElement('div');
   badge.className = 'v2-poll-badge';
-  badge.textContent = isTop ? 'TOP VOTE' : '';
+  badge.textContent = '';
 
   card.append(badge, label, track);
   return card;
@@ -283,6 +292,8 @@ function renderPollStage(machine, state) {
 }
 
 export function applyV2Assets({ assets = {}, title = 'Event' } = {}) {
+  const stage = document.getElementById('v2Stage');
+  if (stage) stage.classList.toggle('is-brand-hidden', assets.hideBrandOnV2 === true);
   setBg('v2StageBg', assets.background || (Array.isArray(assets.photos) ? assets.photos[0] : '') || assets.banner || '', 'cover');
   setBg('v2Logo', assets.logo || '', 'contain');
   setBg('v2Banner', assets.banner || '', 'cover');
@@ -297,18 +308,21 @@ export function renderV2Stage(state = {}) {
   const statusEl = document.getElementById('v2StageStatus');
   const modeEl = document.getElementById('v2ModeLabel');
   const giftLeftEl = document.getElementById('v2GiftLeft');
+  const hasSpinCandidates = state.status === 'spinning'
+    && Array.isArray(state.candidateNames)
+    && state.candidateNames.some(p => p?.name);
   if (prizeEl) prizeEl.textContent = state.prizeName || state.currentPrizeName || 'Ready';
   if (statusEl) statusEl.textContent = state.message || state.status || 'Waiting';
   if (modeEl) modeEl.textContent = state.modeLabel || (state.mode === 'extra' ? 'Extra Round' : 'Main Draw');
   if (giftLeftEl) giftLeftEl.textContent = giftBubbleText(state.giftStats);
   if (stage) {
     const isPoll = state.mode === 'poll' || state.kind === 'poll';
-    stage.classList.toggle('is-spinning', state.status === 'spinning');
+    stage.classList.toggle('is-spinning', hasSpinCandidates);
     stage.classList.toggle('is-clear', state.status === 'clear');
     stage.classList.toggle('is-poll', isPoll);
     if (state.status === 'clear') stage.classList.remove('is-lever-pull');
     const leverKey = `${state.drawId || state.updatedAt || ''}:${state.status || ''}`;
-    if ((state.status === 'spinning' || state.status === 'revealed') && leverKey !== lastLeverKey) {
+    if ((hasSpinCandidates || state.status === 'revealed') && leverKey !== lastLeverKey) {
       lastLeverKey = leverKey;
       stage.classList.remove('is-lever-pull');
       void stage.offsetWidth;
@@ -328,15 +342,20 @@ export function renderV2Stage(state = {}) {
   lastPollMachineKey = '';
   clearSpin();
   const winners = Array.isArray(state.winners) ? state.winners : [];
-  const candidates = Array.isArray(state.candidateNames) && state.candidateNames.length
-    ? state.candidateNames
+  const realCandidates = Array.isArray(state.candidateNames) ? state.candidateNames.filter(p => p?.name) : [];
+  const candidates = realCandidates.length
+    ? realCandidates
     : [{ name: 'READY', dept: '' }, { name: 'LUCKY', dept: '' }, { name: 'DRAW', dept: '' }];
   const count = Math.max(1, Number(state.batchSize || winners.length || 1));
+  const replacedIndex = Number.isInteger(state.replacedIndex) ? state.replacedIndex : -1;
+  const isReroll = state.action === 'reroll' && replacedIndex >= 0;
   applyMachineLayout(machine, count);
 
   const machineKey = JSON.stringify({
     status: state.status || '',
     phase: state.phase || '',
+    action: state.action || '',
+    replacedIndex,
     drawId: state.drawId || '',
     batchSize: count,
     winners: winners.map(w => [w?.keyId || '', w?.name || '', w?.code || '', w?.table || '', w?.seat || ''])
@@ -354,13 +373,27 @@ export function renderV2Stage(state = {}) {
     return;
   }
 
+  if (state.status === 'spinning' && !realCandidates.length) {
+    lastMachineKey = '';
+    const fallback = winners.length ? winners : [{ name: 'No eligible participants', dept: '' }];
+    fallback.forEach((winner, index) => {
+      machine.append(makeSlot(winner, index, winners.length ? 'revealed' : 'ready'));
+    });
+    scheduleTextFit();
+    return;
+  }
+
   if (state.status === 'spinning') {
     lastMachineKey = '';
     for (let i = 0; i < count; i += 1) {
-      machine.append(makeSlot(candidates[(i * 3) % candidates.length], i, 'spinning'));
+      const shouldSpin = !isReroll || i === replacedIndex;
+      const displayWinner = shouldSpin
+        ? candidates[(i * 3) % candidates.length]
+        : winners[i] || { name: '---', dept: '' };
+      machine.append(makeSlot(displayWinner, i, shouldSpin ? 'spinning' : 'revealed', { quiet: !shouldSpin }));
     }
     spinTimer = setInterval(() => {
-      const slots = Array.from(machine.querySelectorAll('.v2-slot'));
+      const slots = Array.from(machine.querySelectorAll('.v2-slot.spinning'));
       slots.forEach((slot, i) => {
         const pick = candidates[Math.floor(Math.random() * candidates.length)] || {};
         const strong = slot.querySelector('strong');
@@ -379,7 +412,8 @@ export function renderV2Stage(state = {}) {
 
   const list = winners.length ? winners : [{ name: 'Ready', dept: '' }];
   list.forEach((winner, index) => {
-    const slot = makeSlot(winner, index, winners.length ? 'revealed' : 'ready');
+    const quiet = winners.length && isReroll && index !== replacedIndex;
+    const slot = makeSlot(winner, index, winners.length ? 'revealed' : 'ready', { quiet });
     slot.style.animationDelay = `${index * 130}ms`;
     machine.append(slot);
   });

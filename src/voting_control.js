@@ -80,8 +80,16 @@ function orderedItems(poll) {
   }));
 }
 
+function publicResultItems(poll) {
+  return orderedItems(poll)
+    .slice()
+    .sort((a, b) => b.count - a.count || a.originalIndex - b.originalIndex)
+    .slice(0, 3)
+    .sort((a, b) => a.count - b.count || a.originalIndex - b.originalIndex);
+}
+
 function buildPollScreen(poll, display, revealStep = 0, highlightTop = false) {
-  const items = orderedItems(poll);
+  const items = display === 'results' ? publicResultItems(poll) : orderedItems(poll);
   const step = Math.max(0, Math.min(items.length, Number(revealStep || 0)));
   return {
     mode: 'poll',
@@ -223,14 +231,15 @@ async function nextResult() {
   const current = publicScreen?.mode === 'poll'
     ? Number(publicScreen.revealStep || 0)
     : Number(ui.pollResultsStep || 0);
-  const next = Math.min(orderedItems(poll).length, current + 1);
+  const count = publicResultItems(poll).length;
+  const next = Math.min(count, current + 1);
   await writeLegacyStage({ currentPollId: selectedPid, pollResultsStep: next });
-  await writePublicScreen(buildPollScreen(poll, 'results', next, next >= orderedItems(poll).length));
+  await writePublicScreen(buildPollScreen(poll, 'results', next, next >= count));
 }
 
 async function revealAll() {
   const poll = requirePoll();
-  const count = orderedItems(poll).length;
+  const count = publicResultItems(poll).length;
   await writeLegacyStage({ currentPollId: selectedPid, showPollQR: false, pollResultsStep: count });
   await writePublicScreen(buildPollScreen(poll, 'results', count, true));
 }

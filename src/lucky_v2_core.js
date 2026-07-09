@@ -6,7 +6,7 @@ import {
   getEventInfo,
   getAssets,
   setCurrentEventId
-} from './core_firebase.js?v=20260706b';
+} from './core_firebase.js?v=20260708d';
 
 export function getEventIdFromUrl() {
   const params = new URL(location.href).searchParams;
@@ -264,7 +264,7 @@ export async function setReady(eid, opts = {}) {
 }
 
 export async function previewSpin(eid, opts = {}) {
-  const ctx = opts.context || {};
+  const ctx = Array.isArray(opts.context?.people) ? opts.context : await loadV2Context(eid);
   const mode = opts.mode === 'extra' ? 'extra' : 'main';
   const roundName = mode === 'extra' ? (opts.roundName || 'Extra Round') : '';
   const roundId = mode === 'extra' ? roundIdFor(roundName) : 'main';
@@ -274,17 +274,24 @@ export async function previewSpin(eid, opts = {}) {
     || {};
   const giftStats = prize.id ? prizeAvailability(prize, ctx.v2 || {}, mode, roundId) : null;
   const batchSize = Math.max(1, Math.min(10, Number(opts.batchSize || 1)));
-  const people = Array.isArray(ctx.people) ? ctx.people : [];
-  const candidates = people
-    .filter(p => p?.checkedIn && p?.name)
-    .slice(0, 42)
-    .map(p => ({
-      name: p.name || '',
-      dept: p.dept || p.department || '',
-      code: p.code || p.staffId || '',
-      table: p.table || '',
-      seat: p.seat || ''
-    }));
+  const previous = opts.previousBatchId
+    ? activeBatches(ctx.v2).find(b => b.id === opts.previousBatchId)
+    : null;
+  const left = (previous && opts.redraw === true) ? batchSize : Number(giftStats?.remaining || 0);
+  if (!prize.id) throw new Error('No prize is selected.');
+  if (left <= 0) throw new Error('This V2 prize quota is already full.');
+
+  const pool = buildPool({
+    people: ctx.people,
+    prizes: ctx.prizes,
+    v2: ctx.v2,
+    mode,
+    roundId,
+    allowRepeat: opts.allowRepeat === true,
+    ignoreBatchId: previous?.id || ''
+  });
+  if (!pool.length) throw new Error('No eligible checked-in participants for this V2 draw.');
+  const candidates = candidateNames(pool);
 
   await publishStage(eid, {
     status: 'spinning',
@@ -398,17 +405,19 @@ export async function drawV2(eid, opts = {}) {
   await publishStage(eid, {
     status: 'spinning',
     phase: 'spinning',
+    action: entry.action,
     drawId,
     mode,
     modeLabel: modeLabel(mode),
     roundId,
     roundName,
+    replacedIndex: isReroll ? replaceIndex : null,
     currentPrizeId: prize.id || '',
     currentPrizeName: prize.name || '',
     prizeName: prize.name || '',
     giftStats: giftStatsBefore,
     batchSize: winners.length,
-    winners: [],
+    winners: isReroll ? previousWinners : [],
     candidateNames: candidateNames(pool),
     message: 'Drawing...'
   });
@@ -467,11 +476,13 @@ export async function drawV2(eid, opts = {}) {
   await publishStage(eid, {
     status: 'revealed',
     phase: 'revealed',
+    action: entry.action,
     drawId,
     mode,
     modeLabel: modeLabel(mode),
     roundId,
     roundName,
+    replacedIndex: isReroll ? replaceIndex : null,
     currentPrizeId: prize.id || '',
     currentPrizeName: prize.name || '',
     prizeName: prize.name || '',

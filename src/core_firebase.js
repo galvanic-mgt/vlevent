@@ -36,7 +36,8 @@ export async function getAssets(id){
     landingBanner: clean(assetSettings?.landingBanner) || clean(landingBannerRaw),
     background: clean(backgroundRaw),
     photos: Array.isArray(photos) ? photos : [],
-    hideLogoOnDraws: assetSettings?.hideLogoOnDraws === true
+    hideLogoOnDraws: assetSettings?.hideLogoOnDraws === true,
+    hideBrandOnV2: assetSettings?.hideBrandOnV2 === true
   };
 }
 
@@ -47,7 +48,8 @@ export async function setAssets(id, assets){
     logo,
     background,
     photos,
-    hideLogoOnDraws
+    hideLogoOnDraws,
+    hideBrandOnV2
   } = assets || {};
 
   if (banner !== undefined) {
@@ -63,10 +65,11 @@ export async function setAssets(id, assets){
   if (photos !== undefined) {
     await FB.put(`/events/${id}/photos`, photos || []);
   }
-  if (landingBanner !== undefined || hideLogoOnDraws !== undefined) {
+  if (landingBanner !== undefined || hideLogoOnDraws !== undefined || hideBrandOnV2 !== undefined) {
     const settings = {};
     if (landingBanner !== undefined) settings.landingBanner = landingBanner || '';
     if (hideLogoOnDraws !== undefined) settings.hideLogoOnDraws = hideLogoOnDraws === true;
+    if (hideBrandOnV2 !== undefined) settings.hideBrandOnV2 = hideBrandOnV2 === true;
     await FB.patch(`/events/${id}/assetSettings`, settings);
   }
 }

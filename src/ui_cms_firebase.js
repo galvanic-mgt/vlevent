@@ -1779,9 +1779,18 @@ async function renderAssets(){
     background: '',
     photos: []
   }));
+  const assetSettings = await FB.get(`/events/${eid}/assetSettings`).catch(() => ({}));
 
   const $ = (id) => document.getElementById(id);
   const str = (v) => (typeof v === 'string' ? v : '');
+  const setV2BrandToggle = (hidden) => {
+    const btn = $('assetV2BrandToggle');
+    if (!btn) return;
+    btn.dataset.enabled = hidden ? 'true' : 'false';
+    btn.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+    btn.textContent = hidden ? 'Public V2 logo/banner: Off' : 'Public V2 logo/banner: On';
+    btn.classList.toggle('primary', hidden);
+  };
 
   // Fill URL inputs
   if ($('assetLogoUrl'))        $('assetLogoUrl').value        = str(assets.logo);
@@ -1789,6 +1798,7 @@ async function renderAssets(){
   if ($('assetLandingBannerUrl')) $('assetLandingBannerUrl').value = str(assets.landingBanner);
   if ($('assetBackgroundUrl'))  $('assetBackgroundUrl').value  = str(assets.background);
   if ($('assetHideLogoOnDraws')) $('assetHideLogoOnDraws').checked = assets.hideLogoOnDraws === true;
+  setV2BrandToggle(assetSettings?.hideBrandOnV2 === true || assets.hideBrandOnV2 === true);
 
   // Previews: prefer Data URL, fallback to URL
   const logoSrc       = str(assets.logo);
@@ -1881,6 +1891,16 @@ async function renderAssets(){
 function bindAssets(){
   const $ = (id) => document.getElementById(id);
 
+  $('assetV2BrandToggle')?.addEventListener('click', () => {
+    const btn = $('assetV2BrandToggle');
+    if (!btn) return;
+    const nextHidden = btn.dataset.enabled !== 'true';
+    btn.dataset.enabled = nextHidden ? 'true' : 'false';
+    btn.setAttribute('aria-pressed', nextHidden ? 'true' : 'false');
+    btn.textContent = nextHidden ? 'Public V2 logo/banner: Off' : 'Public V2 logo/banner: On';
+    btn.classList.toggle('primary', nextHidden);
+  });
+
   // Save button: URL-only image links
   $('saveAssets')?.addEventListener('click', async () => {
     const eid = getCurrentEventId();
@@ -1894,6 +1914,7 @@ function bindAssets(){
     const landingBannerUrl = ($('assetLandingBannerUrl')?.value || '').trim();
     const backgroundUrl = ($('assetBackgroundUrl')?.value || '').trim();
     const hideLogoOnDraws = $('assetHideLogoOnDraws')?.checked === true;
+    const hideBrandOnV2 = $('assetV2BrandToggle')?.dataset.enabled === 'true';
 
     // Keep existing photos; we only change photos through add/delete controls
     const current = await getAssets(eid);
@@ -1905,8 +1926,10 @@ function bindAssets(){
       landingBanner: landingBannerUrl || '',
       background: backgroundUrl || '',
       photos,
-      hideLogoOnDraws
+      hideLogoOnDraws,
+      hideBrandOnV2
     });
+    await FB.patch(`/events/${eid}/assetSettings`, { hideBrandOnV2 });
     alert('已儲存素材設定');
     await renderAssets();
   });
