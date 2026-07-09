@@ -56,6 +56,7 @@
     .v2-name .v2-code{margin-top:.55vh;color:#ffe7a3}
     .v2-slot.spinning .v2-name{animation:v2SlotPulse .2s linear infinite}
     .v2-slot.revealed{animation:v2WinnerSettle .34s ease-out both;border-color:var(--gold)}
+    .v2-slot.revealed.quiet{animation:none}
     .v2-poll-machine{grid-template-columns:repeat(var(--cols,3),minmax(0,1fr));align-items:end}
     .v2-poll-results-list{width:min(84vw,1380px);height:auto;max-height:58vh;margin:0 auto;padding:2vh 2vw;border:1px solid rgba(255,255,255,.24);border-radius:8px;background:rgba(7,12,24,.72);box-shadow:0 24px 80px rgba(0,0,0,.38);flex-direction:column;flex-wrap:nowrap;justify-content:center;align-items:stretch;align-content:center;gap:1.25vh;overflow:hidden}
     .v2-poll-card{position:relative;flex:0 1 auto;width:100%;min-height:clamp(58px,8vh,108px);border:1px solid rgba(255,255,255,.18);border-radius:8px;background:rgba(255,255,255,.06);padding:1.1vh 1.5vw;display:grid;grid-template-columns:minmax(180px,.36fr) minmax(0,1fr);align-items:center;gap:1.5vw;box-shadow:none;overflow:hidden}
@@ -64,6 +65,7 @@
     .v2-poll-card.top::after{content:"";position:absolute;inset:-30%;background:radial-gradient(circle,rgba(255,209,102,.22),transparent 58%);animation:v2TopGlow 1.4s ease-in-out infinite alternate;pointer-events:none}
     .v2-poll-badge{position:absolute;right:1.2vw;top:.9vh;min-height:1.5em;color:var(--gold);font-weight:900;font-size:clamp(14px,1.1vw,24px);text-align:right;letter-spacing:0}
     .v2-poll-label{position:relative;z-index:1;font-size:clamp(20px,2vw,42px);font-weight:900;text-align:left;line-height:1.12;word-break:break-word}
+    .v2-poll-crown{display:inline-block;margin-left:.5em;color:var(--gold);filter:drop-shadow(0 0 12px rgba(255,209,102,.56));vertical-align:middle}
     .v2-poll-track{position:relative;z-index:1;height:clamp(22px,3.8vh,52px);border-radius:999px;background:rgba(255,255,255,.12);overflow:hidden;border:1px solid rgba(255,255,255,.18)}
     .v2-poll-fill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#20d3c2,#ffd166)}
     .v2-poll-card.revealed:not(.fresh) .v2-poll-fill{width:var(--target-width,0%)}
@@ -102,6 +104,12 @@
     .v2-stage.is-poll .v2-main-area{grid-template-rows:auto minmax(0,1fr);gap:3vh;align-content:start}
     .v2-stage.is-poll .v2-prize{font-size:clamp(34px,4.2vw,76px)}
     .v2-stage.is-poll .v2-machine{height:100%;align-items:start;align-content:start}
+    .v2-stage.is-brand-hidden .v2-brand{display:none!important}
+    .v2-stage.is-brand-hidden .v2-stage-content{grid-template-rows:minmax(0,1fr);padding-top:4vh;padding-bottom:4vh;align-items:center}
+    .v2-stage.is-brand-hidden .v2-main-area{height:min(82vh,100%);align-self:center;grid-template-rows:auto minmax(0,1fr)}
+    .v2-stage.is-brand-hidden .v2-machine{align-items:stretch;align-content:stretch}
+    .v2-stage.is-brand-hidden.is-poll .v2-main-area{height:auto;min-height:58vh;align-content:center;justify-content:center}
+    .v2-stage.is-brand-hidden.is-poll .v2-machine{height:auto;align-items:center;align-content:center}
     .v2-stage.is-clear .v2-prize,.v2-stage.is-clear .v2-machine,.v2-stage.is-clear .v2-lever{display:none!important}
     @keyframes v2TopGlow{from{transform:scale(.94);opacity:.55}to{transform:scale(1.06);opacity:1}}
     @keyframes v2PollBarReveal{from{width:0%}to{width:var(--target-width,0%)}}
@@ -125,6 +133,6 @@
     </div>
   </section>
   <script src="./qrcode.min.js"></script>
-  <script type="module" src="./src/lucky_v2_public.js?v=20260707c"></script>
+  <script type="module" src="./src/lucky_v2_public.js?v=20260709a"></script>
 </body>
 </html>

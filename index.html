@@ -377,6 +377,11 @@
         <input id="assetHideLogoOnDraws" type="checkbox">
         <span>Hide logo on draw screens (CMS / Public / Tablet)</span>
       </label>
+      <div style="margin-top:10px">
+        <button id="assetV2BrandToggle" class="btn small" type="button" aria-pressed="false" data-enabled="false">
+          Public V2 logo/banner: On
+        </button>
+      </div>
       <div style="margin-top:8px">
         <div class="muted" style="font-size:12px">預覽：</div>
         <img id="assetLogoPreview" class="photo" style="max-width:100%;display:none" alt="Logo 預覽">
@@ -500,7 +505,7 @@
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
 <script type="module">
-  import { startApp } from './src/boot.js';
+  import { startApp } from './src/boot.js?v=20260708c';
   startApp();
 </script>
 
