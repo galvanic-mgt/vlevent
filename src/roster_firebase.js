@@ -158,5 +158,5 @@ export async function exportCSV(){
     .map(r => r.map(v => `"${String(v).replaceAll('"','""')}"`).join(','))
     .join('\r\n');
 
-  return csv;
+  return "\ufeff" + csv;
 }

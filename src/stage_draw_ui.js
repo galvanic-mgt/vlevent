@@ -10,8 +10,8 @@ import {
   fitWinnerCardText,
   countdown321,
   fireConfettiAtCards
-} from './stage_draw_logic.js';
-import { bindStageGridDelegation } from './stage_draw_logic.js';
+} from './stage_draw_logic.js?v=20260711c';
+import { bindStageGridDelegation } from './stage_draw_logic.js?v=20260711c';
 import { FB } from './fb.js';
 import {
   getRewardRounds,
@@ -235,6 +235,13 @@ async function renderRerollLog(){
   html += '</tbody></table>';
   panel.innerHTML = html;
 }
+export function stopStageDraw() {
+  if (Array.isArray(renderStageDraw._cmsStops)) {
+    renderStageDraw._cmsStops.forEach(stop => { try { stop(); } catch (_) {} });
+    renderStageDraw._cmsStops = [];
+  }
+}
+
 export async function renderStageDraw(mode){
   const eid = getCurrentEventId();
   if(!eid) return;
@@ -305,9 +312,7 @@ export async function renderStageDraw(mode){
 
   // CMS: listen for stageState changes so CMS updates when tablet/public draw
   if (mode === 'cms') {
-    if (Array.isArray(renderStageDraw._cmsStops)) {
-      renderStageDraw._cmsStops.forEach(stop => { try { stop(); } catch (_) {} });
-    }
+    stopStageDraw();
     const handleStageState = async (state)=>{
       try{
         if (state?.mode === 'clear') {

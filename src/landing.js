@@ -575,7 +575,7 @@ function attachCheckin(eid) {
             .join(" · ")
         : "";
 
-      const successMsg = `✅ 已為 ${name || "來賓"} 登記出席，歡迎！`;
+      const successMsg = "已登記抽獎，歡迎！You have been registered for the lucky draw. Welcome!";
       const sessionSeatStr = seatTextForGuest(found);
       showMessage(successMsg, false);
 

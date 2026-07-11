@@ -1,4 +1,5 @@
 import { FB } from './fb.js?v=20260706b';
+import { CONFIG } from './config.js';
 import {
   getPeople,
   getPrizes,
@@ -102,6 +103,47 @@ function withFirebaseTimeout(promise, label, ms = 15000) {
     }, ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function remoteFirebaseUrl(path) {
+  const base = CONFIG.firebaseBase.replace(/\/$/, '');
+  const cleanPath = String(path || '').startsWith('/') ? String(path || '') : `/${path || ''}`;
+  return `${base}${cleanPath}.json`;
+}
+
+async function putJsonDirect(path, value, ms = 7000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    const res = await fetch(remoteFirebaseUrl(path), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(value),
+      signal: controller.signal
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || (data && typeof data.error === 'string')) {
+      throw new Error(data?.error || `${res.status} ${res.statusText || ''}`.trim());
+    }
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function retryFirebaseStep(fn) {
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) await wait(350 + attempt * 700);
+    }
+  }
+  throw lastError;
 }
 
 function optionalFirebaseRead(promise, label, fallback) {
@@ -232,10 +274,14 @@ function applyIndexPatch(patch, path, winners, value) {
 
 async function publishStage(eid, state) {
   const path = `${v2Root(eid)}/ui/stageState`;
-  await withFirebaseTimeout(FB.put(path, {
+  const nextState = {
     ...state,
     updatedAt: Date.now()
-  }), `stage-state write ${path}`);
+  };
+  await withFirebaseTimeout(retryFirebaseStep(() => (
+    putJsonDirect(path, nextState).catch(() => FB.put(path, nextState))
+  )), `stage-state write ${path}`, 22000);
+  return nextState;
 }
 
 export async function setReady(eid, opts = {}) {
@@ -245,7 +291,7 @@ export async function setReady(eid, opts = {}) {
   const roundName = mode === 'extra' ? (opts.roundName || 'Extra Round') : '';
   const roundId = mode === 'extra' ? roundIdFor(roundName) : 'main';
   const giftStats = prizeAvailability(prize, ctx.v2, mode, roundId);
-  await publishStage(eid, {
+  const stageState = await publishStage(eid, {
     status: 'ready',
     mode,
     phase: 'ready',
@@ -260,7 +306,7 @@ export async function setReady(eid, opts = {}) {
     candidateNames: [],
     message: 'Ready'
   });
-  return { prize };
+  return { prize, stageState };
 }
 
 export async function previewSpin(eid, opts = {}) {
@@ -293,7 +339,7 @@ export async function previewSpin(eid, opts = {}) {
   if (!pool.length) throw new Error('No eligible checked-in participants for this V2 draw.');
   const candidates = candidateNames(pool);
 
-  await publishStage(eid, {
+  const stageState = await publishStage(eid, {
     status: 'spinning',
     phase: 'preview',
     drawId: makeId('preview'),
@@ -310,6 +356,7 @@ export async function previewSpin(eid, opts = {}) {
     candidateNames: candidates,
     message: 'Drawing...'
   });
+  return { stageState };
 }
 
 function buildPool({ people, prizes, v2, mode, roundId, allowRepeat, ignoreBatchId = '', excludeKeyIds = new Set() }) {
@@ -343,7 +390,15 @@ export async function drawV2(eid, opts = {}) {
   const roundName = mode === 'extra' ? (opts.roundName || 'Extra Round') : '';
   const roundId = mode === 'extra' ? roundIdFor(roundName) : 'main';
   const batchSize = Math.max(1, Math.min(10, Number(opts.batchSize || 1)));
-  const ctx = await loadV2Context(eid, { requirePeople: true });
+  const cachedCtx = Array.isArray(opts.context?.people) && Array.isArray(opts.context?.prizes)
+    ? opts.context
+    : null;
+  const ctx = cachedCtx
+    ? {
+      ...cachedCtx,
+      v2: (await withFirebaseTimeout(FB.get(v2Root(eid)), `Lucky V2 state read ${v2Root(eid)}`)) || cachedCtx.v2 || {}
+    }
+    : await loadV2Context(eid, { requirePeople: true });
   const prize = ctx.prizes.find(p => p.id === opts.prizeId) || ctx.prizes.find(p => p.id === ctx.curPrizeId) || ctx.prizes[0];
   if (!prize) throw new Error('No prize is selected.');
 
@@ -402,27 +457,31 @@ export async function drawV2(eid, opts = {}) {
     createdAt: now
   };
 
-  await publishStage(eid, {
-    status: 'spinning',
-    phase: 'spinning',
-    action: entry.action,
-    drawId,
-    mode,
-    modeLabel: modeLabel(mode),
-    roundId,
-    roundName,
-    replacedIndex: isReroll ? replaceIndex : null,
-    currentPrizeId: prize.id || '',
-    currentPrizeName: prize.name || '',
-    prizeName: prize.name || '',
-    giftStats: giftStatsBefore,
-    batchSize: winners.length,
-    winners: isReroll ? previousWinners : [],
-    candidateNames: candidateNames(pool),
-    message: 'Drawing...'
-  });
+  if (opts.skipSpinPublish !== true) {
+    await publishStage(eid, {
+      status: 'spinning',
+      phase: 'spinning',
+      action: entry.action,
+      drawId,
+      mode,
+      modeLabel: modeLabel(mode),
+      roundId,
+      roundName,
+      replacedIndex: isReroll ? replaceIndex : null,
+      currentPrizeId: prize.id || '',
+      currentPrizeName: prize.name || '',
+      prizeName: prize.name || '',
+      giftStats: giftStatsBefore,
+      batchSize: winners.length,
+      winners: isReroll ? previousWinners : [],
+      candidateNames: candidateNames(pool),
+      message: 'Drawing...'
+    });
+  }
 
-  const delay = opts.instant ? 450 : Math.max(1200, Math.min(5200, Number(opts.revealDelay || 1960)));
+  const targetDelay = opts.instant ? 450 : Math.max(900, Math.min(5200, Number(opts.revealDelay || 1960)));
+  const elapsed = opts.spinStartedAt ? Math.max(0, Date.now() - Number(opts.spinStartedAt)) : 0;
+  const delay = Math.max(opts.instant ? 120 : 350, targetDelay - elapsed);
   await new Promise(resolve => setTimeout(resolve, delay));
 
   const patch = {};
@@ -473,7 +532,7 @@ export async function drawV2(eid, opts = {}) {
     remaining: Math.max(0, giftStatsBefore.quota - usedAfter)
   };
 
-  await publishStage(eid, {
+  const stageState = await publishStage(eid, {
     status: 'revealed',
     phase: 'revealed',
     action: entry.action,
@@ -493,7 +552,7 @@ export async function drawV2(eid, opts = {}) {
     message: 'Revealed'
   });
 
-  return { entry, left: giftStatsAfter.remaining };
+  return { entry, left: giftStatsAfter.remaining, stageState, v2Patch: patch };
 }
 
 export async function undoLastV2(eid) {
@@ -514,7 +573,7 @@ export async function undoLastV2(eid) {
   patch[`auditLog/${makeId('audit')}`] = { action: 'undo', drawId: batch.id, time: Date.now() };
   patch['ui/lastBatchId'] = null;
   await withFirebaseTimeout(FB.patch(v2Root(eid), patch), `undo write ${v2Root(eid)}`);
-  await publishStage(eid, {
+  const stageState = await publishStage(eid, {
     status: 'ready',
     phase: 'ready',
     mode: batch.mode,
@@ -529,11 +588,11 @@ export async function undoLastV2(eid) {
     candidateNames: [],
     message: 'Last V2 batch undone'
   });
-  return batch;
+  return { batch, stageState, v2Patch: patch };
 }
 
 export async function clearV2Stage(eid) {
-  await publishStage(eid, {
+  const stageState = await publishStage(eid, {
     status: 'clear',
     phase: 'clear',
     mode: 'main',
@@ -542,6 +601,7 @@ export async function clearV2Stage(eid) {
     candidateNames: [],
     message: 'Cleared'
   });
+  return { stageState };
 }
 
 export async function getV2Summary(eid) {
@@ -579,5 +639,5 @@ export function csvForBatches(batches) {
       ]);
     });
   });
-  return rows.map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
+  return "\ufeff" + rows.map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
 }

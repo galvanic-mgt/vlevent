@@ -3,8 +3,8 @@ import { listEvents, createEvent, setCurrentEventId, getCurrentEventId, getEvent
          getQuestions, setQuestions, getAssets, setAssets, getPolls, setPoll, upsertEventMeta } from './core_firebase.js';
 import { addPrize, removePrize, setCurrentPrize, handlePrizeImportCSV, clearAllPrizes, updatePrize } from './stage_prizes_firebase.js';
 import { getRewardRounds, getRewardRoundState, ensureSecondPrizeRound, addRewardRound, addRewardRoundPrize, setCurrentRewardSelection, setCurrentRewardOnStage, drawRewardRoundPrize, updateRewardRound } from './reward_rounds_firebase.js';
-import { handleImportCSV, exportCSV } from './roster_firebase.js';
-import { renderStageDraw } from './stage_draw_ui.js';
+import { handleImportCSV, exportCSV } from './roster_firebase.js?v=20260711c';
+import { renderStageDraw, stopStageDraw } from './stage_draw_ui.js?v=20260711c';
 import { FB } from './fb.js';
 
 (function(){
@@ -839,6 +839,8 @@ function show(targetId){
   // If we just switched to the Lucky Draw tab, render it now (once per show)
   if (targetId === 'pageStageDraw') {
     renderStageDraw('cms');
+  } else {
+    stopStageDraw();
   }
   if (targetId === 'pageRewardRounds') {
     renderRewardRounds();
@@ -1109,7 +1111,7 @@ async function exportAttendanceLog(eid){
       entry?.seat || ''
     ].map(csvEscape).join(','));
   });
-  return rows.join('\n');
+  return "\ufeff" + rows.join('\n');
 }
 
 function rosterPrizeKeys(p = {}) {
@@ -1891,14 +1893,29 @@ async function renderAssets(){
 function bindAssets(){
   const $ = (id) => document.getElementById(id);
 
-  $('assetV2BrandToggle')?.addEventListener('click', () => {
+  $('assetV2BrandToggle')?.addEventListener('click', async () => {
     const btn = $('assetV2BrandToggle');
     if (!btn) return;
+    const previousHidden = btn.dataset.enabled === 'true';
     const nextHidden = btn.dataset.enabled !== 'true';
     btn.dataset.enabled = nextHidden ? 'true' : 'false';
     btn.setAttribute('aria-pressed', nextHidden ? 'true' : 'false');
     btn.textContent = nextHidden ? 'Public V2 logo/banner: Off' : 'Public V2 logo/banner: On';
     btn.classList.toggle('primary', nextHidden);
+    const eid = getCurrentEventId();
+    if (!eid) return;
+    btn.disabled = true;
+    try {
+      await FB.patch(`/events/${eid}/assetSettings`, { hideBrandOnV2: nextHidden });
+    } catch (error) {
+      btn.dataset.enabled = previousHidden ? 'true' : 'false';
+      btn.setAttribute('aria-pressed', previousHidden ? 'true' : 'false');
+      btn.textContent = previousHidden ? 'Public V2 logo/banner: Off' : 'Public V2 logo/banner: On';
+      btn.classList.toggle('primary', previousHidden);
+      alert(`Public V2 logo/banner toggle failed: ${error?.message || String(error)}`);
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   // Save button: URL-only image links

@@ -1,6 +1,7 @@
 // src/polls_public_firebase.js
 import { FB, firebaseUrl } from './fb.js?v=20260706b';
 import { getCurrentEventId } from './core_firebase.js?v=20260706b';
+import { CONFIG } from './config.js';
 
 /**
  * Poll shape:
@@ -37,8 +38,50 @@ export async function getPoll(eid, pid) {
   return (await FB.get(`/events/${eid}/polls/${pid}`)) || null;
 }
 
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function remoteFirebaseUrl(path) {
+  const base = CONFIG.firebaseBase.replace(/\/$/, '');
+  const cleanPath = String(path || '').startsWith('/') ? String(path || '') : `/${path || ''}`;
+  return `${base}${cleanPath}.json`;
+}
+
+async function putJsonWithAbort(path, value, ms = 6000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    const res = await fetch(remoteFirebaseUrl(path), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(value),
+      signal: controller.signal
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || (data && typeof data.error === 'string')) {
+      throw new Error(data?.error || `${res.status} ${res.statusText || ''}`.trim());
+    }
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function retryActiveWrite(fn) {
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) await wait(350 + attempt * 650);
+    }
+  }
+  throw lastError;
+}
+
 export async function setActive(eid, pid, active = true) {
-  return await FB.patch(`/events/${eid}/polls/${pid}`, { active: !!active });
+  const path = `/events/${eid}/polls/${pid}/active`;
+  return await retryActiveWrite(() => putJsonWithAbort(path, !!active));
 }
 
 export function voteCountsFromPoll(poll = {}) {

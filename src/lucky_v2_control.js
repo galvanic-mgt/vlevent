@@ -1,7 +1,9 @@
 import { FB } from './fb.js?v=20260706b';
+import { CONFIG } from './config.js';
 import {
   initEventFromUrl,
   getV2Summary,
+  loadV2Assets,
   setReady,
   previewSpin,
   drawV2,
@@ -9,17 +11,20 @@ import {
   clearV2Stage,
   csvForBatches,
   activeBatches,
+  recentBatches,
   prizeAvailability,
   roundIdFor,
   v2Root
-} from './lucky_v2_core.js?v=20260709a';
-import { applyV2Assets, renderV2Stage } from './lucky_v2_stage.js?v=20260709a';
+} from './lucky_v2_core.js?v=20260711c';
+import { applyV2Assets, renderV2Stage } from './lucky_v2_stage.js?v=20260710c';
 
 const eid = initEventFromUrl();
 let selectedSlot = -1;
 let busy = false;
 let lastState = null;
 let lastSummary = null;
+let quietRefreshTimer = null;
+let actionRevision = 0;
 
 const $ = id => document.getElementById(id);
 
@@ -38,6 +43,47 @@ function withTimeout(promise, label, ms = 18000) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function remoteFirebaseUrl(path) {
+  const base = CONFIG.firebaseBase.replace(/\/$/, '');
+  const cleanPath = String(path || '').startsWith('/') ? String(path || '') : `/${path || ''}`;
+  return `${base}${cleanPath}.json`;
+}
+
+async function putJsonDirect(path, value, ms = 7000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    const res = await fetch(remoteFirebaseUrl(path), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(value),
+      signal: controller.signal
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || (data && typeof data.error === 'string')) {
+      throw new Error(data?.error || `${res.status} ${res.statusText || ''}`.trim());
+    }
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function retryFirebaseStep(fn) {
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) await wait(350 + attempt * 700);
+    }
+  }
+  throw lastError;
+}
+
 function publicUrl() {
   if (location.protocol === 'file:') {
     const url = new URL('http://127.0.0.1:8000/lucky_v2_public.html');
@@ -51,12 +97,16 @@ function publicUrl() {
 
 async function showLuckyDrawScene(message = 'Lucky Draw V2 scene') {
   const path = `/events/${eid}/ui/publicScreen`;
-  await withTimeout(FB.put(path, {
+  const state = {
     mode: 'v2Draw',
     kind: 'luckyDraw',
     message,
     updatedAt: Date.now()
-  }), `public-screen write ${path}`, 12000);
+  };
+  await withTimeout(retryFirebaseStep(() => (
+    putJsonDirect(path, state).catch(() => FB.put(path, state))
+  )), `public-screen write ${path}`, 22000);
+  return state;
 }
 
 function modeOptions() {
@@ -177,14 +227,116 @@ async function refreshAll({ keepPrize = true } = {}) {
   status(`Ready. Checked-in roster: ${(summary.people || []).filter(p => p?.checkedIn).length}. Active V2 batches: ${(summary.active || []).length}.${warningText}`, Boolean(warningText));
 }
 
+function cloneJson(value, fallback = {}) {
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function applyRelativePatch(root, patch = {}) {
+  const next = cloneJson(root || {}, {});
+  Object.entries(patch).forEach(([path, value]) => {
+    const parts = String(path || '').split('/').filter(Boolean);
+    if (!parts.length) return;
+    let node = next;
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      const key = parts[i];
+      if (!node[key] || typeof node[key] !== 'object') node[key] = {};
+      node = node[key];
+    }
+    const key = parts[parts.length - 1];
+    if (value === null) delete node[key];
+    else node[key] = cloneJson(value, value);
+  });
+  return next;
+}
+
+function applyActionResult(result) {
+  if (!lastSummary || (!result?.stageState && !result?.v2Patch)) return;
+  let nextV2 = result.v2Patch
+    ? applyRelativePatch(lastSummary.v2, result.v2Patch)
+    : lastSummary.v2 || {};
+  if (result.stageState) {
+    nextV2 = applyRelativePatch(nextV2, { 'ui/stageState': result.stageState });
+    lastState = result.stageState;
+  }
+  lastSummary = {
+    ...lastSummary,
+    v2: nextV2,
+    curPrizeId: result.stageState?.currentPrizeId || lastSummary.curPrizeId,
+    active: activeBatches(nextV2),
+    recent: recentBatches(nextV2)
+  };
+  renderGiftStats(lastSummary);
+  renderHistory(lastSummary);
+  if (lastState) renderV2Stage(lastState);
+}
+
+async function refreshRuntimeState({ silent = false, expectedRevision = null } = {}) {
+  if (!eid || !lastSummary) return;
+  const [v2, curPrizeId] = await Promise.all([
+    withTimeout(FB.get(v2Root(eid)), `Lucky V2 state refresh ${v2Root(eid)}`, 12000),
+    withTimeout(FB.get(`/events/${eid}/currentPrizeId`).catch(() => lastSummary.curPrizeId), `current prize refresh /events/${eid}/currentPrizeId`, 8000)
+  ]);
+  if (expectedRevision !== null && expectedRevision !== actionRevision) return false;
+  lastSummary = {
+    ...lastSummary,
+    v2: v2 || {},
+    curPrizeId: curPrizeId || lastSummary.curPrizeId,
+    active: activeBatches(v2 || {}),
+    recent: recentBatches(v2 || {})
+  };
+  const state = lastSummary.v2?.ui?.stageState || lastState || { status: 'clear', message: 'V2 control ready' };
+  lastState = state;
+  renderGiftStats(lastSummary);
+  renderHistory(lastSummary);
+  renderV2Stage(state);
+  if (!silent) {
+    status(`Ready. Cached checked-in roster: ${(lastSummary.people || []).filter(p => p?.checkedIn).length}. Active V2 batches: ${(lastSummary.active || []).length}.`);
+  }
+  return true;
+}
+
+async function refreshRosterPrizeCacheQuiet() {
+  if (!eid || busy) return;
+  const revision = actionRevision;
+  try {
+    const summary = await withTimeout(getV2Summary(eid), 'Quiet roster/prize cache refresh', 18000);
+    if (busy || revision !== actionRevision) return;
+    lastSummary = summary;
+    if (!$('v2Prize')?.matches(':focus')) renderPrizeOptions(summary);
+    renderGiftStats(summary);
+    renderHistory(summary);
+    if (lastState) renderV2Stage(lastState);
+    status(`Ready. Cache quietly refreshed. Checked-in roster: ${(summary.people || []).filter(p => p?.checkedIn).length}. Active V2 batches: ${(summary.active || []).length}.`);
+  } catch (error) {
+    console.warn('[Lucky V2] quiet cache refresh failed', error);
+  }
+}
+
+async function refreshV2Assets() {
+  if (!eid) return;
+  const assetInfo = await withTimeout(loadV2Assets(eid), 'Lucky Draw V2 asset refresh', 12000);
+  applyV2Assets(assetInfo);
+  if (lastState) renderV2Stage(lastState);
+}
+
 async function runAction(label, fn) {
   if (busy) return;
+  const revision = ++actionRevision;
   try {
     setBusy(true);
     status(`${label}...`);
-    await withTimeout(fn(), `${label} action`, 26000);
-    await withTimeout(refreshAll(), `${label} refresh`, 18000);
+    const result = await withTimeout(fn(), `${label} action`, 26000);
+    applyActionResult(result);
     status(`${label} complete.`);
+    refreshRuntimeState({ silent: true, expectedRevision: revision }).catch(error => {
+      if (revision === actionRevision) {
+        console.warn(`[Lucky V2] ${label} background verification failed`, error);
+      }
+    });
   } catch (error) {
     console.error(`[Lucky V2] ${label} failed`, error);
     status(`${label} failed: ${error?.message || String(error)}`, true);
@@ -221,45 +373,57 @@ function bindControls() {
     status('Public link copied.');
   });
   $('v2ShowScene')?.addEventListener('click', () => runAction('Show lucky draw scene', async () => {
-    await showLuckyDrawScene();
+    return showLuckyDrawScene();
   }));
   $('v2ShowReady')?.addEventListener('click', () => runAction('Show ready', async () => {
     await showLuckyDrawScene('Lucky Draw ready');
-    await setReady(eid, { ...modeOptions(), context: lastSummary });
+    return setReady(eid, { ...modeOptions(), context: lastSummary });
   }));
   $('v2Draw')?.addEventListener('click', () => runAction('Start draw', async () => {
-    await previewSpin(eid, { ...modeOptions(), context: lastSummary });
-    await showLuckyDrawScene('Lucky Draw drawing');
-    await drawV2(eid, { ...modeOptions(), revealDelay: 2200 });
+    const spinStartedAt = Date.now();
+    await Promise.all([
+      previewSpin(eid, { ...modeOptions(), context: lastSummary }),
+      showLuckyDrawScene('Lucky Draw drawing')
+    ]);
+    return drawV2(eid, { ...modeOptions(), context: lastSummary, revealDelay: 1540, skipSpinPublish: true, spinStartedAt });
   }));
   $('v2Instant')?.addEventListener('click', () => runAction('Instant draw', async () => {
-    await previewSpin(eid, { ...modeOptions(), context: lastSummary });
-    await showLuckyDrawScene('Lucky Draw instant drawing');
-    await drawV2(eid, { ...modeOptions(), instant: true });
+    const spinStartedAt = Date.now();
+    await Promise.all([
+      previewSpin(eid, { ...modeOptions(), context: lastSummary }),
+      showLuckyDrawScene('Lucky Draw instant drawing')
+    ]);
+    return drawV2(eid, { ...modeOptions(), context: lastSummary, instant: true, skipSpinPublish: true, spinStartedAt });
   }));
   $('v2Redraw')?.addEventListener('click', () => runAction('Redraw batch', async () => {
     const id = selectedBatchId();
     if (!id) throw new Error('No revealed V2 batch to redraw.');
-    await previewSpin(eid, { ...modeOptions(), context: lastSummary, previousBatchId: id, redraw: true });
-    await showLuckyDrawScene('Lucky Draw redraw');
-    await drawV2(eid, { ...modeOptions(), previousBatchId: id, redraw: true, revealDelay: 1300 });
+    const spinStartedAt = Date.now();
+    await Promise.all([
+      previewSpin(eid, { ...modeOptions(), context: lastSummary, previousBatchId: id, redraw: true }),
+      showLuckyDrawScene('Lucky Draw redraw')
+    ]);
+    return drawV2(eid, { ...modeOptions(), context: lastSummary, previousBatchId: id, redraw: true, revealDelay: 1200, skipSpinPublish: true, spinStartedAt });
   }));
   $('v2Reroll')?.addEventListener('click', () => runAction('Reroll selected', async () => {
     const id = selectedBatchId();
     if (!id) throw new Error('No revealed V2 batch to reroll.');
     if (selectedSlot < 0) throw new Error('Select a winner slot first.');
     await showLuckyDrawScene('Lucky Draw reroll');
-    await drawV2(eid, { ...modeOptions(), previousBatchId: id, replaceIndex: selectedSlot, revealDelay: 1100 });
+    const result = await drawV2(eid, { ...modeOptions(), context: lastSummary, previousBatchId: id, replaceIndex: selectedSlot, revealDelay: 1100 });
     selectedSlot = -1;
+    return result;
   }));
   $('v2Undo')?.addEventListener('click', () => runAction('Undo last', async () => {
-    await undoLastV2(eid);
+    const result = await undoLastV2(eid);
     selectedSlot = -1;
+    return result;
   }));
   $('v2Clear')?.addEventListener('click', () => runAction('Clear public', async () => {
     await showLuckyDrawScene('Lucky Draw cleared');
-    await clearV2Stage(eid);
+    const result = await clearV2Stage(eid);
     selectedSlot = -1;
+    return result;
   }));
   $('v2Export')?.addEventListener('click', downloadCsv);
 
@@ -306,9 +470,16 @@ async function boot() {
     status(`Loading failed: ${error?.message || String(error)}`, true);
   }
   FB.listen?.(`${v2Root(eid)}/ui/stageState`, state => {
+    if (Number(state?.updatedAt || 0) < Number(lastState?.updatedAt || 0)) return;
     lastState = state || {};
     renderV2Stage(lastState);
   }, { fallbackMs: 3000, transport: 'poll' });
+  FB.listen?.(`/events/${eid}/assetSettings`, () => {
+    refreshV2Assets().catch(error => console.warn('[Lucky V2] asset refresh failed', error));
+  }, { fallbackMs: 15000 });
+  if (!quietRefreshTimer) {
+    quietRefreshTimer = setInterval(refreshRosterPrizeCacheQuiet, 60000);
+  }
 }
 
 boot();

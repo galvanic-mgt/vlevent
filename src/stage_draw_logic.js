@@ -401,7 +401,7 @@ export async function exportCurrentWinners(){
   (cur?.winners||[]).forEach(w=>{
     rows.push([w.name||'', w.dept||'', cur?.name||'', w.time? new Date(w.time).toLocaleString() : '']);
   });
-  const csv = rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\r\n');
+  const csv = "\ufeff" + rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'}));
   a.download = `winners_${cur?.id||'current'}.csv`;

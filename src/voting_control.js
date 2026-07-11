@@ -1,6 +1,6 @@
 import { FB } from './fb.js?v=20260706b';
 import { getPolls, getEventInfo } from './core_firebase.js?v=20260706b';
-import { setActive, voteCountsFromPoll } from './polls_public_firebase.js?v=20260706b';
+import { setActive, voteCountsFromPoll } from './polls_public_firebase.js?v=20260710b';
 
 const url = new URL(location.href);
 const eid = url.searchParams.get('event') || '';
@@ -45,6 +45,21 @@ function withTimeout(promise, label, ms = 18000) {
     timer = setTimeout(() => reject(new Error(`${label} did not respond within ${Math.round(ms / 1000)}s. The voting control page is waiting for that Firebase/local-server step, so check that specific connection/path and try again.`)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function retryFirebaseStep(fn) {
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) await wait(300 + attempt * 600);
+    }
+  }
+  throw lastError;
 }
 
 function selectedPoll() {
@@ -162,11 +177,11 @@ function requirePoll() {
 }
 
 async function writeLegacyStage(patch) {
-  await withTimeout(FB.patch(`/events/${eid}/ui`, patch), `legacy voting-stage write /events/${eid}/ui`, 12000);
+  await withTimeout(retryFirebaseStep(() => FB.patch(`/events/${eid}/ui`, patch)), `legacy voting-stage write /events/${eid}/ui`, 18000);
 }
 
 async function writePublicScreen(state) {
-  await withTimeout(FB.put(`/events/${eid}/ui/publicScreen`, state), `public-screen write /events/${eid}/ui/publicScreen`, 12000);
+  await withTimeout(retryFirebaseStep(() => FB.put(`/events/${eid}/ui/publicScreen`, state)), `public-screen write /events/${eid}/ui/publicScreen`, 18000);
 }
 
 async function setStandby() {
@@ -193,7 +208,7 @@ async function showQr() {
 
 async function openVoting() {
   const poll = requirePoll();
-  await withTimeout(setActive(eid, selectedPid, true), `poll active write /events/${eid}/polls/${selectedPid}`, 12000);
+  await withTimeout(setActive(eid, selectedPid, true), `poll active write /events/${eid}/polls/${selectedPid}/active`, 18000);
   await writeLegacyStage({
     currentPollId: selectedPid,
     showPollQR: true,
@@ -206,14 +221,14 @@ async function openVoting() {
 async function closeVoting() {
   const poll = requirePoll();
   if (totalVotes(poll) === 0 && !confirm('Close voting with 0 votes?')) return;
-  await withTimeout(setActive(eid, selectedPid, false), `poll active write /events/${eid}/polls/${selectedPid}`, 12000);
+  await withTimeout(setActive(eid, selectedPid, false), `poll active write /events/${eid}/polls/${selectedPid}/active`, 18000);
 }
 
 async function startResults() {
   const poll = requirePoll();
   if (poll.active !== false) {
     if (!confirm('Voting is still open. Close voting and reveal results?')) return;
-    await withTimeout(setActive(eid, selectedPid, false), `poll active write /events/${eid}/polls/${selectedPid}`, 12000);
+    await withTimeout(setActive(eid, selectedPid, false), `poll active write /events/${eid}/polls/${selectedPid}/active`, 18000);
   }
   const trigger = Date.now();
   await writeLegacyStage({

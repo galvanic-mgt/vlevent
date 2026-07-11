@@ -16,7 +16,7 @@ const TEXT = {
   couldNotImport: "未能匯入安排資料 CSV。\nCould not import arrangement CSV.",
   couldNotSaveSettings: "未能儲存設定。\nCould not save settings.",
   noApplications: "未載入任何登記資料。\nNo applications loaded.",
-  imported: count => `已匯入 ${count} 行資料。\n${count} rows imported.`
+  imported: (count, skipped = 0) => `已匯入 ${count} 行資料。\n${count} rows imported.${skipped ? `\n已略過 ${skipped} 行空白或無法配對的資料。\n${skipped} empty or unmatched rows skipped.` : ""}`
 };
 
 function $(id) {
@@ -81,13 +81,24 @@ function csvEscape(value) {
   return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }
 
-function splitCSVLine(line) {
-  const out = [];
+function parseCSVRows(text) {
+  const source = String(text || "").replace(/^\ufeff/, "");
+  const rows = [];
+  let row = [];
   let cur = "";
   let inQ = false;
-  for (let i = 0; i < line.length; i += 1) {
-    const c = line[i];
-    const n = line[i + 1];
+
+  const pushRow = () => {
+    row.push(cur);
+    const cleaned = row.map(value => value.trim());
+    if (cleaned.some(value => value !== "")) rows.push(cleaned);
+    row = [];
+    cur = "";
+  };
+
+  for (let i = 0; i < source.length; i += 1) {
+    const c = source[i];
+    const n = source[i + 1];
     if (c === '"') {
       if (inQ && n === '"') {
         cur += '"';
@@ -98,18 +109,25 @@ function splitCSVLine(line) {
       continue;
     }
     if (c === "," && !inQ) {
-      out.push(cur);
+      row.push(cur);
       cur = "";
+      continue;
+    }
+    if ((c === "\r" || c === "\n") && !inQ) {
+      pushRow();
+      if (c === "\r" && n === "\n") i += 1;
       continue;
     }
     cur += c;
   }
-  out.push(cur);
-  return out.map(v => v.trim());
+  if (cur || row.length) pushRow();
+  return rows;
 }
 
 function normaliseRows(apps) {
-  return Object.entries(apps || {}).map(([id, app]) => ({ id, ...(app || {}) }))
+  return Object.entries(apps || {})
+    .map(([id, app]) => ({ id, ...(app || {}), __source: "primary" }))
+    .filter(row => row.code || row.name || row.phone || row.applicationKey)
     .sort((a, b) => String(a.code || a.name || "").localeCompare(String(b.code || b.name || "")));
 }
 
@@ -122,7 +140,7 @@ function normaliseFallbackApplications(raw) {
     const rowTime = String(row.updatedAt || row.createdAt || "");
     const existingTime = String(existing?.updatedAt || existing?.createdAt || "");
     if (!existing || rowTime >= existingTime) {
-      latest.set(key, { id, ...(row || {}) });
+      latest.set(key, { id, ...(row || {}), __source: "fallback" });
     }
   });
   return Array.from(latest.values());
@@ -265,10 +283,19 @@ function exportCsv() {
 }
 
 function headerMap(headers) {
-  const lower = headers.map(h => h.trim().toLowerCase());
+  const normal = value => String(value || "")
+    .replace(/^\ufeff/, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+  const parts = headers.map(header => String(header || "")
+    .split(/\r?\n/)
+    .map(normal)
+    .filter(Boolean));
   const find = names => {
     for (const name of names) {
-      const idx = lower.indexOf(name.toLowerCase());
+      const target = normal(name);
+      const idx = parts.findIndex(values => values.includes(target));
       if (idx !== -1) return idx;
     }
     return -1;
@@ -288,25 +315,28 @@ function headerMap(headers) {
 async function importBackfillText(text) {
   const eventId = $("eventIdInput").value.trim();
   if (!eventId) throw new Error("缺少活動 ID。 Missing event ID.");
-  const lines = String(text).split(/\r?\n/).filter(line => line.trim());
-  if (lines.length < 2) throw new Error("CSV 沒有資料。 CSV is empty.");
+  const rows = parseCSVRows(text);
+  if (rows.length < 2) throw new Error("CSV 沒有資料。 CSV is empty.");
 
   if (!currentPeople.length) {
     currentPeople = await dbGet(`/events/${eventId}/people`).catch(() => []);
     if (!Array.isArray(currentPeople)) currentPeople = [];
   }
 
-  const headers = splitCSVLine(lines[0]);
+  const headers = rows[0];
   const idx = headerMap(headers);
   if (idx.code < 0) throw new Error("安排資料 CSV 需要正片號或 Code 欄位。 Arrangement CSV needs a BatchNumber or Code column.");
 
   const patch = {};
   let count = 0;
-  for (const line of lines.slice(1)) {
-    const cols = splitCSVLine(line);
+  let skipped = 0;
+  for (const cols of rows.slice(1)) {
     const pick = i => (i >= 0 && i < cols.length ? cols[i] : "");
     const code = pick(idx.code);
-    if (!code) continue;
+    if (!code) {
+      skipped += 1;
+      continue;
+    }
     const finalArrangement = {
       table: pick(idx.table),
       seat: pick(idx.seat),
@@ -314,13 +344,31 @@ async function importBackfillText(text) {
       pickupLocation: pick(idx.pickupLocation),
       returnTime: pick(idx.returnTime),
       mealLabel: pick(idx.mealLabel),
-      remarks: pick(idx.remarks),
-      importedAt: new Date().toISOString()
+      remarks: pick(idx.remarks)
     };
-    const appKey = safeKey(code);
-    patch[`/events/${eventId}/preEventApplications/${appKey}/finalArrangement`] = finalArrangement;
+    if (!Object.values(finalArrangement).some(value => String(value || "").trim())) {
+      skipped += 1;
+      continue;
+    }
+    finalArrangement.importedAt = new Date().toISOString();
+
+    const normalCode = String(code).trim().toLowerCase();
+    const safeCode = safeKey(code).toLowerCase();
+    const application = currentRows.find(row => (
+      String(row?.code || "").trim().toLowerCase() === normalCode
+      || String(row?.applicationKey || "").trim().toLowerCase() === safeCode
+    ));
 
     const personIndex = currentPeople.findIndex(p => String(p?.code || "").trim().toLowerCase() === String(code).trim().toLowerCase());
+    if (!application && personIndex < 0) {
+      skipped += 1;
+      continue;
+    }
+    if (application?.__source === "fallback") {
+      patch[`/events/${eventId}/preAttendance/${application.id}/finalArrangement`] = finalArrangement;
+    } else if (application?.id) {
+      patch[`/events/${eventId}/preEventApplications/${application.id}/finalArrangement`] = finalArrangement;
+    }
     if (personIndex >= 0) {
       if (finalArrangement.table) patch[`/events/${eventId}/people/${personIndex}/table`] = finalArrangement.table;
       if (finalArrangement.seat) patch[`/events/${eventId}/people/${personIndex}/seat`] = finalArrangement.seat;
@@ -329,8 +377,8 @@ async function importBackfillText(text) {
     count += 1;
   }
 
-  await dbPatch("/", patch);
-  setStatus(TEXT.imported(count), false);
+  if (Object.keys(patch).length) await dbPatch("/", patch);
+  setStatus(TEXT.imported(count, skipped), false);
   await loadApplications();
 }
 
