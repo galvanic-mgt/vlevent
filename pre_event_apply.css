@@ -74,6 +74,15 @@ h2 {
   opacity: 0.78;
 }
 
+.pe-action-note {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.72em;
+  font-weight: 600;
+  line-height: 1.25;
+  opacity: 0.78;
+}
+
 .pe-panel {
   margin-top: 16px;
   padding: 20px;

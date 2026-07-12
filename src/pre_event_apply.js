@@ -228,13 +228,35 @@ async function findGuest(eid, rawBatch) {
     const phoneMatch = inputDigits && normaliseDigits(p.phone) === inputDigits;
     if (codeMatch || phoneMatch) return { guest: p, index: i };
   }
+
+  const importedKey = safeKey(rawBatch);
+  if (importedKey) {
+    const imported = await dbGet(`/events/${eid}/preEventApplications/${importedKey}`).catch(() => null);
+    const codeMatch = imported?.code && inputText && normalise(imported.code) === inputText;
+    const phoneMatch = imported?.phone && inputDigits && normaliseDigits(imported.phone) === inputDigits;
+    if (imported && (codeMatch || phoneMatch)) {
+      return {
+        guest: {
+          name: imported.name || "",
+          code: imported.code || "",
+          phone: imported.phone || "",
+          dept: imported.dept || "",
+          preEvent: imported
+        },
+        index: -1,
+        application: imported
+      };
+    }
+  }
   return { guest: null, index: -1 };
 }
 
 async function loadApplication(eid, guest) {
-  const key = safeKey(guest.code || guest.phone || guest.name);
-  const app = await dbGet(`/events/${eid}/preEventApplications/${key}`).catch(() => null);
-  if (app) return app;
+  const keys = [...new Set([guest.code, guest.phone, guest.name].map(safeKey).filter(Boolean))];
+  for (const key of keys) {
+    const app = await dbGet(`/events/${eid}/preEventApplications/${key}`).catch(() => null);
+    if (app) return app;
+  }
 
   const rawFallback = await dbGet(`/events/${eid}/preAttendance`).catch(() => null);
   const fallbackRows = Object.entries(rawFallback || {})
@@ -365,7 +387,7 @@ function renderDetails(app, guest, canReveal) {
 
 async function showGuest(rawBatch) {
   setMessage("loginMessage", TEXT.checkingBatch, false);
-  const { guest, index } = await findGuest(currentEventId, rawBatch);
+  const { guest, index, application } = await findGuest(currentEventId, rawBatch);
   if (!guest) {
     setMessage("loginMessage", TEXT.batchNotFound, true);
     return;
@@ -373,7 +395,7 @@ async function showGuest(rawBatch) {
 
   currentGuest = guest;
   currentGuestIndex = index;
-  currentApplication = await loadApplication(currentEventId, guest);
+  currentApplication = application || await loadApplication(currentEventId, guest);
 
   const settings = await loadEventSettings(currentEventId);
   const { info, meta } = await loadEventHeader(currentEventId);
@@ -419,10 +441,12 @@ async function saveApplication() {
       primarySaveError: primaryError?.message || String(primaryError)
     });
   }
-  try {
-    await dbPatch(`/events/${currentEventId}/people/${currentGuestIndex}`, { preEvent: payload });
-  } catch (error) {
-    console.warn("[pre-event] application saved, roster mirror skipped", error);
+  if (currentGuestIndex >= 0) {
+    try {
+      await dbPatch(`/events/${currentEventId}/people/${currentGuestIndex}`, { preEvent: payload });
+    } catch (error) {
+      console.warn("[pre-event] application saved, roster mirror skipped", error);
+    }
   }
   currentApplication = payload;
   setMessage("formMessage", TEXT.saved, false);

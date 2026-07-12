@@ -1792,7 +1792,7 @@ async function renderAssets(){
     if (!btn) return;
     btn.dataset.enabled = hidden ? 'true' : 'false';
     btn.setAttribute('aria-pressed', hidden ? 'true' : 'false');
-    btn.textContent = hidden ? 'Public V2 logo/banner: Off' : 'Public V2 logo/banner: On';
+    btn.textContent = hidden ? 'Public V2 logo: Off' : 'Public V2 logo: On';
     btn.classList.toggle('primary', hidden);
   };
 
@@ -1902,7 +1902,7 @@ function bindAssets(){
     const nextHidden = btn.dataset.enabled !== 'true';
     btn.dataset.enabled = nextHidden ? 'true' : 'false';
     btn.setAttribute('aria-pressed', nextHidden ? 'true' : 'false');
-    btn.textContent = nextHidden ? 'Public V2 logo/banner: Off' : 'Public V2 logo/banner: On';
+    btn.textContent = nextHidden ? 'Public V2 logo: Off' : 'Public V2 logo: On';
     btn.classList.toggle('primary', nextHidden);
     const eid = getCurrentEventId();
     if (!eid) return;
@@ -1912,9 +1912,9 @@ function bindAssets(){
     } catch (error) {
       btn.dataset.enabled = previousHidden ? 'true' : 'false';
       btn.setAttribute('aria-pressed', previousHidden ? 'true' : 'false');
-      btn.textContent = previousHidden ? 'Public V2 logo/banner: Off' : 'Public V2 logo/banner: On';
+      btn.textContent = previousHidden ? 'Public V2 logo: Off' : 'Public V2 logo: On';
       btn.classList.toggle('primary', previousHidden);
-      alert(`Public V2 logo/banner toggle failed: ${error?.message || String(error)}`);
+      alert(`Public V2 logo toggle failed: ${error?.message || String(error)}`);
     } finally {
       btn.disabled = false;
     }

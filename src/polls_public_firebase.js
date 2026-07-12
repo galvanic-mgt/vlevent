@@ -2,7 +2,7 @@
 import { FB, firebaseUrl } from './fb.js?v=20260706b';
 import { getCurrentEventId } from './core_firebase.js?v=20260706b';
 import { CONFIG } from './config.js';
-import { rebuildVoterLookup } from './voter_lookup.js?v=20260712f';
+import { publishPollVoterEligibility } from './voter_lookup.js?v=20260712n';
 
 /**
  * Poll shape:
@@ -84,10 +84,15 @@ async function retryActiveWrite(fn) {
 export async function setActive(eid, pid, active = true) {
   const path = `/events/${eid}/polls/${pid}/active`;
   if (active) {
-    await rebuildVoterLookup(eid);
     await ensureVoteRecordMode(eid, pid);
   }
-  return await retryActiveWrite(() => putJsonWithAbort(path, !!active));
+  const result = await retryActiveWrite(() => putJsonWithAbort(path, !!active));
+  if (active) {
+    void publishPollVoterEligibility(eid, pid).catch(error => {
+      console.warn('Could not prepare compact voter eligibility:', error);
+    });
+  }
+  return result;
 }
 
 function voterCountsOnly(poll = {}) {

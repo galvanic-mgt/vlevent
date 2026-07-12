@@ -206,6 +206,24 @@ function makePollCard(item, index, revealStep, showTop, freshReveal) {
   card.style.animationDelay = `${index * 120}ms`;
   card.setAttribute('aria-label', `${item?.text || `Option ${index + 1}`}${revealed ? ' revealed' : ' pending'}`);
 
+  const photo = document.createElement('div');
+  photo.className = 'v2-poll-photo';
+  const photoSrc = localAssetUrl(item?.img || '');
+  if (photoSrc) {
+    const image = document.createElement('img');
+    image.src = photoSrc;
+    image.alt = `${item?.text || `Option ${index + 1}`} photo`;
+    image.loading = 'eager';
+    image.decoding = 'async';
+    image.addEventListener('error', () => {
+      image.remove();
+      photo.classList.add('is-empty');
+    }, { once: true });
+    photo.append(image);
+  } else {
+    photo.classList.add('is-empty');
+  }
+
   const label = document.createElement('div');
   label.className = 'v2-poll-label';
   const labelText = document.createElement('span');
@@ -232,7 +250,7 @@ function makePollCard(item, index, revealStep, showTop, freshReveal) {
   badge.className = 'v2-poll-badge';
   badge.textContent = '';
 
-  card.append(badge, label, track);
+  card.append(badge, photo, label, track);
   return card;
 }
 
@@ -248,7 +266,7 @@ function renderPollStage(machine, state) {
     display,
     revealStep,
     highlightTop: state.highlightTop === true,
-    items: items.map(item => [item?.id || '', item?.text || '', Number(item?.percent || 0), item?.isTop === true])
+    items: items.map(item => [item?.id || '', item?.text || '', item?.img || '', Number(item?.percent || 0), item?.isTop === true])
   });
   if (pollMachineKey === lastPollMachineKey) {
     scheduleTextFit();

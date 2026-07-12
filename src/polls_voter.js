@@ -1,9 +1,9 @@
 // src/polls_voter.js
-import { getPoll, submitBoundVote } from './polls_public_firebase.js?v=20260712f';
+import { getPoll, submitBoundVote } from './polls_public_firebase.js?v=20260712n';
 import { setCurrentEventId, getAssets } from './core_firebase.js';
 import { applyBackground } from './ui_background.js';
 import { FB } from './fb.js';
-import { findVoterInLookup } from './voter_lookup.js?v=20260712f';
+import { findVoterInLookup, findVoterInPollEligibility } from './voter_lookup.js?v=20260712n';
 
 const $ = s => document.querySelector(s);
 const url = new URL(location.href);
@@ -13,6 +13,7 @@ const pid = url.searchParams.get('poll');
 let voterKey = '';
 let selectedOption = null;
 let loadedPoll = null;
+let rosterFallbackPromise = null;
 
 if (eid) setCurrentEventId(eid);
 
@@ -51,8 +52,37 @@ function isPollOpen(poll) {
   return Date.now() >= d.getTime();
 }
 
+async function findVoterInRosterFallback(rawBatch) {
+  if (!rosterFallbackPromise) {
+    rosterFallbackPromise = FB.get(`/events/${eid}/people`)
+      .then(value => Array.isArray(value) ? value : [])
+      .catch(error => {
+        rosterFallbackPromise = null;
+        throw error;
+      });
+  }
+  const people = await rosterFallbackPromise;
+  const inputText = String(rawBatch || '').trim().toLowerCase();
+  const inputDigits = normaliseDigits(rawBatch);
+  return people.find(person => (
+    (inputText && String(person?.code || '').trim().toLowerCase() === inputText)
+    || (inputDigits && normaliseDigits(person?.phone) === inputDigits)
+  )) || null;
+}
+
 async function verifyBatch(rawBatch) {
-  return await findVoterInLookup(eid, rawBatch);
+  const snapshot = findVoterInPollEligibility(loadedPoll, rawBatch);
+  if (snapshot.ready) return snapshot.person;
+  try {
+    return await findVoterInLookup(eid, rawBatch);
+  } catch (error) {
+    const message = String(error?.message || error || '').toLowerCase();
+    const lookupUnavailable = error?.code === 'VOTER_LOOKUP_NOT_READY'
+      || message.includes('permission denied')
+      || message.includes('401');
+    if (!lookupUnavailable) throw error;
+    return await findVoterInRosterFallback(rawBatch);
+  }
 }
 
 async function hydrateBrand() {

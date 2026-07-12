@@ -29,8 +29,8 @@
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
         <button id="loadButton" class="pe-secondary" type="button">載入登記<br><span class="pe-en">Load applications</span></button>
         <button id="exportButton" class="pe-primary" type="button">匯出 CSV<br><span class="pe-en">Export CSV</span></button>
-        <button id="importApplicationsButton" class="pe-primary" type="button">匯入登記 CSV<br><span class="pe-en">Import applications CSV</span></button>
-        <button id="importButton" class="pe-secondary" type="button">匯入安排 CSV<br><span class="pe-en">Import arrangement CSV</span></button>
+        <button id="importApplicationsButton" class="pe-primary" type="button">匯入登記及出席 CSV<br><span class="pe-en">Import applications &amp; attendance CSV</span><span class="pe-action-note">更新模式：只新增，保留現有<br>Update: add missing, keep existing</span></button>
+        <button id="importButton" class="pe-secondary" type="button">匯入安排 CSV<br><span class="pe-en">Import arrangement CSV</span><span class="pe-action-note">覆蓋模式：取代已配對安排<br>Overwrite: replace matched arrangements</span></button>
       </div>
       <p id="statusMessage" class="pe-message" role="status"></p>
     </section>
@@ -66,6 +66,6 @@
   </main>
 
   <script src="./src/pre_event_apply_config.js"></script>
-  <script src="./src/pre_event_admin.js?v=20260712b"></script>
+  <script src="./src/pre_event_admin.js?v=20260713a"></script>
 </body>
 </html>

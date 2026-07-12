@@ -1,5 +1,5 @@
 import { FB, firebaseUrl } from './fb.js?v=20260706b';
-import { getPoll, setActive, voteCountsFromPoll } from './polls_public_firebase.js?v=20260712f';
+import { getPoll, setActive, voteCountsFromPoll } from './polls_public_firebase.js?v=20260712n';
 
 const url = new URL(location.href);
 const eid = url.searchParams.get('event') || '';

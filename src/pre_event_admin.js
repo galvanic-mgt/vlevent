@@ -19,7 +19,7 @@ const TEXT = {
   couldNotSaveSettings: "未能儲存設定。\nCould not save settings.",
   noApplications: "未載入任何登記資料。\nNo applications loaded.",
   importingApplications: (done, total) => `正在匯入登記 ${done}/${total}...\nImporting applications ${done}/${total}...`,
-  applicationsImported: (created, existing, skipped) => `已新增 ${created} 份登記；保留 ${existing} 份現有登記。\n${created} applications added; ${existing} existing applications preserved.${skipped ? `\n已略過 ${skipped} 行缺少識別資料。\n${skipped} rows without usable identifiers skipped.` : ""}`,
+  applicationsImported: (created, existing, skipped, notAttending = 0) => `已新增 ${created} 份登記（包括 ${notAttending} 份不出席）；保留 ${existing} 份現有登記。\n${created} applications added, including ${notAttending} not attending; ${existing} existing applications preserved.${skipped ? `\n已略過 ${skipped} 行缺少識別資料。\n${skipped} rows without usable identifiers skipped.` : ""}`,
   imported: (count, skipped = 0) => `已匯入 ${count} 行資料。\n${count} rows imported.${skipped ? `\n已略過 ${skipped} 行空白或無法配對的資料。\n${skipped} empty or unmatched rows skipped.` : ""}`
 };
 
@@ -466,6 +466,7 @@ async function importApplicationsText(text) {
   const pending = [];
   let existing = 0;
   let skipped = 0;
+  let notAttending = 0;
   const importedAt = new Date().toISOString();
   const arrangementIdx = headerMap(headers);
 
@@ -541,14 +542,15 @@ async function importApplicationsText(text) {
     if (hasFinalArrangement) payload.finalArrangement = finalArrangement;
 
     pending.push([`/events/${eventId}/preEventApplications/${applicationKey}`, payload]);
+    if (!attending) notAttending += 1;
     seenKeys.add(applicationKey.toLowerCase());
     rowTokens.forEach(token => existingTokens.add(token));
   }
 
   if (!pending.length) {
     await loadApplications();
-    setStatus(TEXT.applicationsImported(0, existing, skipped), false);
-    return { created: 0, existing, skipped };
+    setStatus(TEXT.applicationsImported(0, existing, skipped, 0), false);
+    return { created: 0, existing, skipped, notAttending: 0 };
   }
 
   const confirmed = confirm(`新增 ${pending.length} 份登記到活動 ${eventId}？現有登記不會被覆蓋。\nImport ${pending.length} applications into ${eventId}? Existing applications will not be overwritten.`);
@@ -562,8 +564,8 @@ async function importApplicationsText(text) {
   }
 
   await loadApplications();
-  setStatus(TEXT.applicationsImported(pending.length, existing, skipped), false);
-  return { created: pending.length, existing, skipped };
+  setStatus(TEXT.applicationsImported(pending.length, existing, skipped, notAttending), false);
+  return { created: pending.length, existing, skipped, notAttending };
 }
 
 async function importBackfillText(text) {
