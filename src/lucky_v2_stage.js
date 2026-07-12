@@ -356,6 +356,7 @@ export function renderV2Stage(state = {}) {
   machine.classList.remove('v2-poll-machine', 'v2-poll-results-list');
 
   if (state.mode === 'poll' || state.kind === 'poll') {
+    lastMachineKey = '';
     renderPollStage(machine, state);
     scheduleTextFit();
     return;
