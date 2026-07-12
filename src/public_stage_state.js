@@ -1,7 +1,7 @@
 // Public-side listener for /ui/stageState plus poll QR/results overlays.
 import { FB } from './fb.js';
 import { renderBatchGrid as renderBatchGridCore, fireConfettiAtCards } from './stage_draw_logic.js';
-import { voteCountsFromPoll } from './polls_public_firebase.js';
+import { voteCountsFromPoll } from './polls_public_firebase.js?v=20260712f';
 
 function getEventId() {
   const u = new URL(location.href);

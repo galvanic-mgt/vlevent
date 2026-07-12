@@ -83,7 +83,7 @@ export async function startApp(){
   overlay.bindLoginOverlay?.();
 
   // 2) CMS core
-  const cms = await safeImport('./ui_cms_firebase.js?v=20260711c', 'ui_cms_firebase.js');
+  const cms = await safeImport('./ui_cms_firebase.js?v=20260712f', 'ui_cms_firebase.js');
   if (typeof cms.bootCMS === 'function') {
     try { await cms.bootCMS(); }
     catch (err) {

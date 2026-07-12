@@ -1,8 +1,9 @@
 // src/polls_voter.js
-import { getPoll, submitBoundVote } from './polls_public_firebase.js';
+import { getPoll, submitBoundVote } from './polls_public_firebase.js?v=20260712f';
 import { setCurrentEventId, getAssets } from './core_firebase.js';
 import { applyBackground } from './ui_background.js';
 import { FB } from './fb.js';
+import { findVoterInLookup } from './voter_lookup.js?v=20260712f';
 
 const $ = s => document.querySelector(s);
 const url = new URL(location.href);
@@ -17,10 +18,6 @@ if (eid) setCurrentEventId(eid);
 
 function safeKey(value) {
   return String(value || '').trim().replace(/[.#$/\[\]]/g, '_');
-}
-
-function normalise(value) {
-  return String(value || '').trim().toLowerCase();
 }
 
 function normaliseDigits(value) {
@@ -55,14 +52,7 @@ function isPollOpen(poll) {
 }
 
 async function verifyBatch(rawBatch) {
-  const people = await FB.get(`/events/${eid}/people`).catch(() => []);
-  const list = Array.isArray(people) ? people : [];
-  const text = normalise(rawBatch);
-  const digits = normaliseDigits(rawBatch);
-  return list.find(p => {
-    if (!p) return false;
-    return (text && normalise(p.code) === text) || (digits && normaliseDigits(p.phone) === digits);
-  }) || null;
+  return await findVoterInLookup(eid, rawBatch);
 }
 
 async function hydrateBrand() {
@@ -156,7 +146,7 @@ function bindIdentity() {
         setError('Batch number not found.');
         return;
       }
-      voterKey = safeKey(person.code || raw);
+      voterKey = safeKey(person.code || normaliseDigits(person.phone) || raw);
       const existing = await FB.get(`/events/${eid}/polls/${pid}/voters/${voterKey}`).catch(() => null);
       if (existing) {
         setVoteEnabled(false);
@@ -168,7 +158,9 @@ function bindIdentity() {
       setStatus(`Welcome ${person.name || ''}. Select one option, then confirm submit.`);
     } catch (e) {
       console.error('[vote] identity failed', e);
-      setError('Could not check this batch number. Please try again.');
+      setError(e?.code === 'VOTER_LOOKUP_NOT_READY'
+        ? 'The voter list is still being prepared. Please try again shortly.'
+        : 'Could not check this batch number. Please try again.');
     }
   });
 }

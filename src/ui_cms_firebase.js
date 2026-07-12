@@ -1,11 +1,13 @@
 import { listEvents, createEvent, setCurrentEventId, getCurrentEventId, getEventInfo, saveEventInfo, getFirebaseDebugUrl,
-         getPeople, setPeople, getPrizes, setPrizes, getCurrentPrizeIdRemote, setCurrentPrizeIdRemote,
+         getPeople, getPrizes, setPrizes, getCurrentPrizeIdRemote, setCurrentPrizeIdRemote,
          getQuestions, setQuestions, getAssets, setAssets, getPolls, setPoll, upsertEventMeta } from './core_firebase.js';
 import { addPrize, removePrize, setCurrentPrize, handlePrizeImportCSV, clearAllPrizes, updatePrize } from './stage_prizes_firebase.js';
 import { getRewardRounds, getRewardRoundState, ensureSecondPrizeRound, addRewardRound, addRewardRoundPrize, setCurrentRewardSelection, setCurrentRewardOnStage, drawRewardRoundPrize, updateRewardRound } from './reward_rounds_firebase.js';
-import { handleImportCSV, exportCSV } from './roster_firebase.js?v=20260711c';
+import { handleImportCSV, exportCSV } from './roster_firebase.js?v=20260712f';
 import { renderStageDraw, stopStageDraw } from './stage_draw_ui.js?v=20260711c';
 import { FB } from './fb.js';
+import { voteCountsFromPoll } from './polls_public_firebase.js?v=20260712f';
+import { writePeopleWithVoterLookup } from './voter_lookup.js?v=20260712f';
 
 (function(){
   const btn = document.getElementById('themeToggle');
@@ -1014,7 +1016,7 @@ function setRosterSyncStatus(text){
 async function setPeopleWithSync(eid, people){
   setRosterSyncStatus('更新中…');
   try {
-    await setPeople(eid, people);
+    await writePeopleWithVoterLookup(eid, people);
     setRosterSyncStatus('已更新');
   } catch (err) {
     console.error('[roster] sync failed', err);
@@ -2128,7 +2130,7 @@ async function renderPolls(){
     const pollId = p.id || pid; // prefer embedded id, else key
 
     const li = document.createElement('li');
-    const total = Object.values(p.votes || {}).reduce((a,b)=> a + Number(b || 0), 0);
+    const total = Object.values(voteCountsFromPoll(p)).reduce((a,b)=> a + Number(b || 0), 0);
     const optionsText = (p.options || []).map(o => o.text).join(' / ') || '—';
 
     const voteUrl   = makeLink('vote.html',        pollId);
@@ -2234,6 +2236,47 @@ function bindPolls(){
     await renderPollManager(); // keep 投票管理 list in sync
     await bindPollPicker(); // refresh picker for new poll
   });
+}
+
+function buildVotingV2PublicScreen(eid, pid, poll, revealStep = 0, highlightTop = false) {
+  const votes = voteCountsFromPoll(poll || {});
+  const allItems = (poll?.options || []).map((option, originalIndex) => ({
+    id: option.id,
+    text: option.text || `Option ${originalIndex + 1}`,
+    img: option.img || '',
+    count: Number(votes[option.id] || 0),
+    originalIndex
+  }));
+  const max = Math.max(0, ...allItems.map(item => item.count));
+  const items = allItems
+    .map(item => ({
+      ...item,
+      percent: max ? Math.round((item.count / max) * 100) : 0,
+      isTop: max > 0 && item.count === max
+    }))
+    .sort((a, b) => b.count - a.count || a.originalIndex - b.originalIndex)
+    .slice(0, 3)
+    .sort((a, b) => a.count - b.count || a.originalIndex - b.originalIndex);
+  const step = Math.max(0, Math.min(items.length, Number(revealStep || 0)));
+  const votePage = new URL('./vote.html', location.href);
+  votePage.search = `?event=${encodeURIComponent(eid)}&poll=${encodeURIComponent(pid)}`;
+  const question = poll?.question || poll?.q || 'Voting';
+  return {
+    mode: 'poll',
+    kind: 'poll',
+    status: 'poll-results',
+    pollDisplay: 'results',
+    pollId: pid,
+    question,
+    prizeName: question,
+    modeLabel: 'Voting',
+    message: step >= items.length ? 'Final result' : 'Revealing results',
+    voteLink: votePage.href,
+    items,
+    revealStep: step,
+    highlightTop,
+    updatedAt: Date.now()
+  };
 }
 
 async function bindPollPicker(){
@@ -2375,13 +2418,18 @@ async function bindPollPicker(){
     btnPlayResults.onclick = async function(){
       const pid = sel.value;
       if (!pid) return;
+      const fallbackPoll = polls[pid];
+      if (!fallbackPoll) return;
       try {
         if (window.FB && window.FB.patch) {
+          const poll = await window.FB.get(`/events/${eid}/polls/${pid}`).catch(() => fallbackPoll) || fallbackPoll;
+          const trigger = Date.now();
           await window.FB.patch(`/events/${eid}/ui`, {
             currentPollId: pid,
             showPollQR: false,
-            pollResultsTrigger: Date.now(),
-            pollResultsStep: 0
+            pollResultsTrigger: trigger,
+            pollResultsStep: 0,
+            publicScreen: buildVotingV2PublicScreen(eid, pid, poll, 0, false)
           });
         }
         alert('已觸發公眾結果動畫');
@@ -2396,10 +2444,29 @@ async function bindPollPicker(){
     btnNextResults.onclick = async function(){
       const pid = sel.value;
       if (!pid) return;
+      const poll = polls[pid];
+      if (!poll) return;
       try {
         const ui = await window.FB.get(`/events/${eid}/ui`).catch(()=>({}));
-        const step = Number(ui?.pollResultsStep || 0) + 1;
-        await window.FB.patch(`/events/${eid}/ui`, { pollResultsStep: step });
+        const fallbackScreen = buildVotingV2PublicScreen(eid, pid, poll, 0, false);
+        const currentScreen = ui?.publicScreen?.mode === 'poll'
+          && ui.publicScreen.pollDisplay === 'results'
+          && ui.publicScreen.pollId === pid
+          ? ui.publicScreen
+          : fallbackScreen;
+        const total = Array.isArray(currentScreen.items) ? currentScreen.items.length : 0;
+        const step = Math.min(total, Number(currentScreen.revealStep || ui?.pollResultsStep || 0) + 1);
+        await window.FB.patch(`/events/${eid}/ui`, {
+          currentPollId: pid,
+          pollResultsStep: step,
+          publicScreen: {
+            ...currentScreen,
+            revealStep: step,
+            highlightTop: step >= total,
+            message: step >= total ? 'Final result' : 'Revealing results',
+            updatedAt: Date.now()
+          }
+        });
       } catch (e) {
         console.warn('[poll] next results failed', e);
       }
@@ -2413,7 +2480,8 @@ async function bindPollPicker(){
         await window.FB.patch(`/events/${eid}/ui`, {
           pollResultsTrigger: null,
           pollResultsStep: 0,
-          showPollQR: false
+          showPollQR: false,
+          publicScreen: { mode: 'v2Draw', updatedAt: Date.now(), message: 'Returned to V2 draw screen' }
         });
         alert('已清除結果模式，恢復抽獎畫面');
       } catch (e) {
@@ -2732,7 +2800,7 @@ export async function renderPollManager() {
 
         if (!question || !opts.length) return alert('請輸入問題與至少一個選項');
 
-        const newPoll = { id: pid, question, options: opts, votes: poll.votes || {} };
+        const newPoll = { ...poll, id: pid, question, options: opts, votes: poll.votes || {} };
         await FB.put(`/events/${eid}/polls/${pid}`, newPoll);
         alert('已儲存');
         renderPollManager();

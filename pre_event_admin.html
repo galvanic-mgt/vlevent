@@ -22,13 +22,14 @@
           <input id="eventIdInput" placeholder="e..." />
         </label>
         <label class="pe-field">
-          <span>安排資料 CSV<br><span class="pe-en">Arrangement CSV</span></span>
+          <span>登記／安排資料 CSV<br><span class="pe-en">Applications / arrangement CSV</span></span>
           <input id="backfillFile" type="file" accept=".csv" />
         </label>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
         <button id="loadButton" class="pe-secondary" type="button">載入登記<br><span class="pe-en">Load applications</span></button>
         <button id="exportButton" class="pe-primary" type="button">匯出 CSV<br><span class="pe-en">Export CSV</span></button>
+        <button id="importApplicationsButton" class="pe-primary" type="button">匯入登記 CSV<br><span class="pe-en">Import applications CSV</span></button>
         <button id="importButton" class="pe-secondary" type="button">匯入安排 CSV<br><span class="pe-en">Import arrangement CSV</span></button>
       </div>
       <p id="statusMessage" class="pe-message" role="status"></p>
@@ -65,6 +66,6 @@
   </main>
 
   <script src="./src/pre_event_apply_config.js"></script>
-  <script src="./src/pre_event_admin.js?v=20260711d"></script>
+  <script src="./src/pre_event_admin.js?v=20260712b"></script>
 </body>
 </html>

@@ -332,8 +332,6 @@ export async function previewSpin(eid, opts = {}) {
     prizes: ctx.prizes,
     v2: ctx.v2,
     mode,
-    roundId,
-    allowRepeat: opts.allowRepeat === true,
     ignoreBatchId: previous?.id || ''
   });
   if (!pool.length) throw new Error('No eligible checked-in participants for this V2 draw.');
@@ -359,16 +357,23 @@ export async function previewSpin(eid, opts = {}) {
   return { stageState };
 }
 
-function buildPool({ people, prizes, v2, mode, roundId, allowRepeat, ignoreBatchId = '', excludeKeyIds = new Set() }) {
+function buildPool({ people, prizes, v2, mode, ignoreBatchId = '', excludeKeyIds = new Set() }) {
   const originalKeys = originalWinnerKeyIds(prizes);
   const mainKeys = indexKeys(v2?.main?.winnerKeys);
-  const roundKeys = indexKeys(v2?.rewardRounds?.[roundId]?.winnerKeys);
+  const active = activeBatches(v2);
+  const extraKeys = new Set();
+  active
+    .filter(batch => batch.mode === 'extra' && batch.id !== ignoreBatchId)
+    .forEach(batch => {
+      (batch.winners || []).forEach(winner => {
+        if (winner?.keyId) extraKeys.add(winner.keyId);
+      });
+    });
 
   if (ignoreBatchId) {
-    const ignored = activeBatches(v2).find(b => b.id === ignoreBatchId);
+    const ignored = active.find(b => b.id === ignoreBatchId);
     (ignored?.winners || []).forEach(w => {
       mainKeys.delete(w.keyId);
-      roundKeys.delete(w.keyId);
     });
   }
 
@@ -380,7 +385,7 @@ function buildPool({ people, prizes, v2, mode, roundId, allowRepeat, ignoreBatch
       if (mainKeys.has(kid)) return false;
       return true;
     }
-    if (!allowRepeat && roundKeys.has(kid)) return false;
+    if (extraKeys.has(kid)) return false;
     return true;
   });
 }
@@ -412,8 +417,8 @@ export async function drawV2(eid, opts = {}) {
 
   const excludeKeyIds = new Set();
   if (isReroll) {
-    previousWinners.forEach((w, idx) => {
-      if (idx !== replaceIndex && w?.keyId) excludeKeyIds.add(w.keyId);
+    previousWinners.forEach(w => {
+      if (w?.keyId) excludeKeyIds.add(w.keyId);
     });
   }
 
@@ -426,8 +431,6 @@ export async function drawV2(eid, opts = {}) {
     prizes: ctx.prizes,
     v2: ctx.v2,
     mode,
-    roundId,
-    allowRepeat: opts.allowRepeat === true,
     ignoreBatchId: previous?.id || '',
     excludeKeyIds
   });
@@ -457,7 +460,7 @@ export async function drawV2(eid, opts = {}) {
     createdAt: now
   };
 
-  if (opts.skipSpinPublish !== true) {
+  if (opts.skipSpinPublish !== true && opts.instant !== true) {
     await publishStage(eid, {
       status: 'spinning',
       phase: 'spinning',
@@ -479,10 +482,12 @@ export async function drawV2(eid, opts = {}) {
     });
   }
 
-  const targetDelay = opts.instant ? 450 : Math.max(900, Math.min(5200, Number(opts.revealDelay || 1960)));
-  const elapsed = opts.spinStartedAt ? Math.max(0, Date.now() - Number(opts.spinStartedAt)) : 0;
-  const delay = Math.max(opts.instant ? 120 : 350, targetDelay - elapsed);
-  await new Promise(resolve => setTimeout(resolve, delay));
+  if (opts.instant !== true) {
+    const targetDelay = Math.max(900, Math.min(5200, Number(opts.revealDelay || 1960)));
+    const elapsed = opts.spinStartedAt ? Math.max(0, Date.now() - Number(opts.spinStartedAt)) : 0;
+    const delay = Math.max(350, targetDelay - elapsed);
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
 
   const patch = {};
   const batchPath = mode === 'extra'
@@ -496,7 +501,7 @@ export async function drawV2(eid, opts = {}) {
     patch[`rewardRounds/${roundId}/id`] = roundId;
     patch[`rewardRounds/${roundId}/name`] = roundName || 'Extra Round';
     patch[`rewardRounds/${roundId}/allowMainRoundWinners`] = true;
-    patch[`rewardRounds/${roundId}/allowDuplicateWithinRound`] = opts.allowRepeat === true;
+    patch[`rewardRounds/${roundId}/allowDuplicateWithinRound`] = false;
   }
   if (previous?.id) {
     const previousPath = previous.mode === 'extra'
@@ -535,6 +540,7 @@ export async function drawV2(eid, opts = {}) {
   const stageState = await publishStage(eid, {
     status: 'revealed',
     phase: 'revealed',
+    instant: opts.instant === true,
     action: entry.action,
     drawId,
     mode,

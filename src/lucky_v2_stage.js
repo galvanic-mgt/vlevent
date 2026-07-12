@@ -311,6 +311,7 @@ export function renderV2Stage(state = {}) {
   const hasSpinCandidates = state.status === 'spinning'
     && Array.isArray(state.candidateNames)
     && state.candidateNames.some(p => p?.name);
+  const isInstant = state.instant === true;
   if (prizeEl) prizeEl.textContent = state.prizeName || state.currentPrizeName || 'Ready';
   if (statusEl) statusEl.textContent = state.message || state.status || 'Waiting';
   if (modeEl) modeEl.textContent = state.modeLabel || (state.mode === 'extra' ? 'Extra Round' : 'Main Draw');
@@ -322,7 +323,10 @@ export function renderV2Stage(state = {}) {
     stage.classList.toggle('is-poll', isPoll);
     if (state.status === 'clear') stage.classList.remove('is-lever-pull');
     const leverKey = `${state.drawId || state.updatedAt || ''}:${state.status || ''}`;
-    if ((hasSpinCandidates || state.status === 'revealed') && leverKey !== lastLeverKey) {
+    if (isInstant) {
+      lastLeverKey = leverKey;
+      stage.classList.remove('is-lever-pull');
+    } else if ((hasSpinCandidates || state.status === 'revealed') && leverKey !== lastLeverKey) {
       lastLeverKey = leverKey;
       stage.classList.remove('is-lever-pull');
       void stage.offsetWidth;
@@ -412,7 +416,7 @@ export function renderV2Stage(state = {}) {
 
   const list = winners.length ? winners : [{ name: 'Ready', dept: '' }];
   list.forEach((winner, index) => {
-    const quiet = winners.length && isReroll && index !== replacedIndex;
+    const quiet = isInstant || (winners.length && isReroll && index !== replacedIndex);
     const slot = makeSlot(winner, index, winners.length ? 'revealed' : 'ready', { quiet });
     slot.style.animationDelay = `${index * 130}ms`;
     machine.append(slot);

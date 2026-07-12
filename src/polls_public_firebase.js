@@ -2,6 +2,7 @@
 import { FB, firebaseUrl } from './fb.js?v=20260706b';
 import { getCurrentEventId } from './core_firebase.js?v=20260706b';
 import { CONFIG } from './config.js';
+import { rebuildVoterLookup } from './voter_lookup.js?v=20260712f';
 
 /**
  * Poll shape:
@@ -20,6 +21,7 @@ export async function publishPoll(poll) {
   if (!eid) throw new Error('No current event');
   // ensure defaults
   const normalized = {
+    ...poll,
     id: poll.id,
     q: poll.q?.trim() || '',
     options: (poll.options || []).map(o => ({ id: o.id, text: o.text })),
@@ -81,34 +83,84 @@ async function retryActiveWrite(fn) {
 
 export async function setActive(eid, pid, active = true) {
   const path = `/events/${eid}/polls/${pid}/active`;
+  if (active) {
+    await rebuildVoterLookup(eid);
+    await ensureVoteRecordMode(eid, pid);
+  }
   return await retryActiveWrite(() => putJsonWithAbort(path, !!active));
 }
 
-export function voteCountsFromPoll(poll = {}) {
-  const counts = { ...(poll.votes || {}) };
+function voterCountsOnly(poll = {}) {
   const voterCounts = {};
   Object.values(poll.voters || {}).forEach(vote => {
     const optionId = vote?.optionId || '';
     if (!optionId) return;
     voterCounts[optionId] = Number(voterCounts[optionId] || 0) + 1;
   });
+  return voterCounts;
+}
+
+export function voteCountsFromPoll(poll = {}) {
+  const voterCounts = voterCountsOnly(poll);
+  if (poll.voteRecordMode === 'voters-v1') {
+    const counts = {};
+    const optionIds = new Set([
+      ...Object.keys(poll.voteBaseline || {}),
+      ...Object.keys(voterCounts),
+      ...(poll.options || []).map(option => option?.id).filter(Boolean)
+    ]);
+    optionIds.forEach(optionId => {
+      counts[optionId] = Number(poll.voteBaseline?.[optionId] || 0)
+        + Number(voterCounts[optionId] || 0);
+    });
+    return counts;
+  }
+
+  const counts = { ...(poll.votes || {}) };
   Object.entries(voterCounts).forEach(([optionId, count]) => {
     counts[optionId] = Math.max(Number(counts[optionId] || 0), Number(count || 0));
   });
   return counts;
 }
 
+async function ensureVoteRecordMode(eid, pid) {
+  const poll = await getPoll(eid, pid);
+  if (!poll || poll.voteRecordMode === 'voters-v1') return poll;
+  const recorded = voterCountsOnly(poll);
+  const baseline = {};
+  const optionIds = new Set([
+    ...Object.keys(poll.votes || {}),
+    ...Object.keys(recorded),
+    ...(poll.options || []).map(option => option?.id).filter(Boolean)
+  ]);
+  optionIds.forEach(optionId => {
+    baseline[optionId] = Math.max(0,
+      Number(poll.votes?.[optionId] || 0) - Number(recorded[optionId] || 0));
+  });
+  await FB.patch(`/events/${eid}/polls/${pid}`, {
+    voteRecordMode: 'voters-v1',
+    voteBaseline: baseline,
+    voteRecordModeAt: Date.now()
+  });
+  return { ...poll, voteRecordMode: 'voters-v1', voteBaseline: baseline };
+}
+
 async function readJsonResponse(res, path) {
   const data = await res.json().catch(() => null);
   if (!res.ok || (data && typeof data.error === 'string')) {
     const msg = data?.error || `${res.status} ${res.statusText || ''}`.trim();
-    throw new Error(`Firebase ${path} failed: ${msg}`);
+    const error = new Error(`Firebase ${path} failed: ${msg}`);
+    error.status = res.status;
+    throw error;
   }
   return data;
 }
 
 async function readWithEtag(path) {
-  const res = await fetch(firebaseUrl(path), { headers: { 'X-Firebase-ETag': 'true' } });
+  const res = await fetchWithTimeout(firebaseUrl(path), {
+    cache: 'no-store',
+    headers: { 'X-Firebase-ETag': 'true' }
+  });
   const data = await readJsonResponse(res, path);
   const etag = res.headers.get('ETag');
   if (!etag) throw new Error('Firebase did not return an ETag for voter claim');
@@ -116,14 +168,42 @@ async function readWithEtag(path) {
 }
 
 async function conditionalPut(path, body, etag) {
-  const res = await fetch(firebaseUrl(path), {
+  const res = await fetchWithTimeout(firebaseUrl(path), {
     method: 'PUT',
-    headers: { 'if-match': etag },
-    body: JSON.stringify(body)
+    headers: { 'Content-Type': 'application/json', 'if-match': etag },
+    body: JSON.stringify(body),
+    keepalive: true
   });
   if (res.status === 412) return { claimed: false };
   await readJsonResponse(res, path);
   return { claimed: true };
+}
+
+async function fetchWithTimeout(url, options = {}, ms = 3500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readVoteRecord(path) {
+  const res = await fetchWithTimeout(firebaseUrl(path), { cache: 'no-store' });
+  return await readJsonResponse(res, path);
+}
+
+function existingVoteResult(existing, optionId) {
+  if (existing?.optionId === optionId) return { ...existing, existing: true };
+  const error = new Error('This batch number has already voted');
+  error.code = 'ALREADY_VOTED';
+  throw error;
+}
+
+function retryDelay(attempt) {
+  const base = Math.min(4000, 250 * (2 ** attempt));
+  return base + Math.floor(Math.random() * Math.max(100, base * 0.35));
 }
 
 async function claimVoter(eid, pid, voterKey, optionId) {
@@ -131,37 +211,38 @@ async function claimVoter(eid, pid, voterKey, optionId) {
   const record = {
     optionId,
     votedAt: Date.now(),
-    counted: false
+    source: 'voters-v1'
   };
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const { data, etag } = await readWithEtag(path);
-    if (data) throw new Error('This batch number has already voted');
-    const result = await conditionalPut(path, record, etag);
-    if (result.claimed) return record;
+  let lastError;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      const { data, etag } = await readWithEtag(path);
+      if (data) return existingVoteResult(data, optionId);
+      const result = await conditionalPut(path, record, etag);
+      if (result.claimed) return record;
+    } catch (error) {
+      if (error?.code === 'ALREADY_VOTED') throw error;
+      if ([400, 401, 403].includes(Number(error?.status || 0))) throw error;
+      lastError = error;
+      const existing = await readVoteRecord(path).catch(() => null);
+      if (existing) return existingVoteResult(existing, optionId);
+    }
+    if (attempt < 5) await wait(retryDelay(attempt));
   }
 
-  const existing = await FB.get(path).catch(() => null);
-  if (existing) throw new Error('This batch number has already voted');
-  throw new Error('Vote was busy. Please submit again.');
-}
-
-export async function incrementVote(eid, pid, optionId) {
-  await FB.patch(`/events/${eid}/polls/${pid}`, {
-    [`votes/${optionId}`]: { '.sv': { increment: 1 } }
-  });
-  return await FB.get(`/events/${eid}/polls/${pid}/votes/${optionId}`).catch(() => null);
+  const existing = await readVoteRecord(path).catch(() => null);
+  if (existing) return existingVoteResult(existing, optionId);
+  throw new Error(`Vote could not be confirmed. Please try again.${lastError?.message ? ` (${lastError.message})` : ''}`);
 }
 
 export async function submitBoundVote(eid, pid, voterKey, optionId) {
   if (!voterKey) throw new Error('Missing voter identity');
-  await claimVoter(eid, pid, voterKey, optionId);
-  try {
-    const next = await incrementVote(eid, pid, optionId);
-    await FB.patch(`/events/${eid}/polls/${pid}/voters/${voterKey}`, { counted: true, countedAt: Date.now() }).catch(() => {});
-    return next;
-  } catch (error) {
-    console.warn('[poll vote] count increment failed; voter record remains the source of truth', error);
-    return null;
+  const active = await readVoteRecord(`/events/${eid}/polls/${pid}/active`).catch(() => null);
+  if (active === false) {
+    const error = new Error('Voting is closed.');
+    error.code = 'VOTING_CLOSED';
+    throw error;
   }
+  return await claimVoter(eid, pid, voterKey, optionId);
 }

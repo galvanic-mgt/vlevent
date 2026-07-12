@@ -15,8 +15,8 @@ import {
   prizeAvailability,
   roundIdFor,
   v2Root
-} from './lucky_v2_core.js?v=20260711c';
-import { applyV2Assets, renderV2Stage } from './lucky_v2_stage.js?v=20260710c';
+} from './lucky_v2_core.js?v=20260712j';
+import { applyV2Assets, renderV2Stage } from './lucky_v2_stage.js?v=20260712j';
 
 const eid = initEventFromUrl();
 let selectedSlot = -1;
@@ -95,6 +95,32 @@ function publicUrl() {
   return url.href;
 }
 
+async function copyText(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (_) {
+    // Fall through to the legacy copy path for restricted browser contexts.
+  }
+
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.style.cssText = 'position:fixed;left:-9999px;opacity:0;pointer-events:none';
+  document.body.appendChild(area);
+  area.select();
+  let copied = false;
+  try {
+    copied = document.execCommand('copy');
+  } catch (_) {
+    copied = false;
+  }
+  area.remove();
+  return copied;
+}
+
 async function showLuckyDrawScene(message = 'Lucky Draw V2 scene') {
   const path = `/events/${eid}/ui/publicScreen`;
   const state = {
@@ -115,8 +141,7 @@ function modeOptions() {
     mode,
     prizeId: $('v2Prize')?.value || '',
     batchSize: Number($('v2Batch')?.value || 1),
-    roundName: mode === 'extra' ? ($('v2RoundName')?.value || 'Extra Round') : '',
-    allowRepeat: $('v2AllowRepeat')?.checked === true
+    roundName: mode === 'extra' ? ($('v2RoundName')?.value || 'Extra Round') : ''
   };
 }
 
@@ -352,13 +377,19 @@ function selectedBatchId() {
 function downloadCsv() {
   const summary = lastSummary;
   if (!summary) return;
-  const csv = csvForBatches(activeBatches(summary.v2));
+  const batches = activeBatches(summary.v2);
+  const csv = csvForBatches(batches);
   const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+  const objectUrl = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  a.href = objectUrl;
   a.download = `lucky_v2_${stamp}.csv`;
+  a.hidden = true;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(a.href);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 2000);
+  status(`CSV export started. ${batches.length} active batches included.`);
 }
 
 function bindControls() {
@@ -369,8 +400,8 @@ function bindControls() {
   }
   $('v2OpenPublic')?.addEventListener('click', () => window.open(publicUrl(), '_blank'));
   $('v2CopyPublic')?.addEventListener('click', async () => {
-    await navigator.clipboard.writeText(publicUrl()).catch(() => {});
-    status('Public link copied.');
+    const copied = await copyText(publicUrl());
+    status(copied ? 'Public link copied.' : 'Copy failed. Select and copy the public link above.', !copied);
   });
   $('v2ShowScene')?.addEventListener('click', () => runAction('Show lucky draw scene', async () => {
     return showLuckyDrawScene();
@@ -388,12 +419,9 @@ function bindControls() {
     return drawV2(eid, { ...modeOptions(), context: lastSummary, revealDelay: 1540, skipSpinPublish: true, spinStartedAt });
   }));
   $('v2Instant')?.addEventListener('click', () => runAction('Instant draw', async () => {
-    const spinStartedAt = Date.now();
-    await Promise.all([
-      previewSpin(eid, { ...modeOptions(), context: lastSummary }),
-      showLuckyDrawScene('Lucky Draw instant drawing')
-    ]);
-    return drawV2(eid, { ...modeOptions(), context: lastSummary, instant: true, skipSpinPublish: true, spinStartedAt });
+    const result = await drawV2(eid, { ...modeOptions(), context: lastSummary, instant: true, skipSpinPublish: true });
+    await showLuckyDrawScene('Lucky Draw instant result');
+    return result;
   }));
   $('v2Redraw')?.addEventListener('click', () => runAction('Redraw batch', async () => {
     const id = selectedBatchId();
@@ -443,7 +471,6 @@ function bindControls() {
   $('v2Mode')?.addEventListener('change', () => {
     const extra = $('v2Mode')?.value === 'extra';
     if ($('v2RoundName')) $('v2RoundName').disabled = !extra;
-    if ($('v2AllowRepeat')) $('v2AllowRepeat').disabled = !extra;
     if (lastSummary) {
       renderPrizeOptions(lastSummary);
       renderGiftStats(lastSummary);

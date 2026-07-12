@@ -1,6 +1,5 @@
-import { FB } from './fb.js?v=20260706b';
-import { getPolls, getEventInfo } from './core_firebase.js?v=20260706b';
-import { setActive, voteCountsFromPoll } from './polls_public_firebase.js?v=20260710b';
+import { FB, firebaseUrl } from './fb.js?v=20260706b';
+import { getPoll, setActive, voteCountsFromPoll } from './polls_public_firebase.js?v=20260712f';
 
 const url = new URL(location.href);
 const eid = url.searchParams.get('event') || '';
@@ -11,6 +10,7 @@ let ui = {};
 let publicScreen = {};
 let selectedPid = url.searchParams.get('poll') || '';
 let busy = false;
+let eventName = '';
 
 function pageUrl(file, params = {}) {
   const u = new URL(file, location.href);
@@ -29,7 +29,33 @@ function v2PublicUrl() {
 }
 
 function cmsUrl() {
-  return pageUrl('./index.html', { event: eid });
+  return pageUrl('./lucky_v2.html', { event: eid });
+}
+
+async function copyText(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (_) {
+    // Fall through to the legacy copy path for restricted browser contexts.
+  }
+
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.style.cssText = 'position:fixed;left:-9999px;opacity:0;pointer-events:none';
+  document.body.appendChild(area);
+  area.select();
+  let copied = false;
+  try {
+    copied = document.execCommand('copy');
+  } catch (_) {
+    copied = false;
+  }
+  area.remove();
+  return copied;
 }
 
 function status(text, isError = false) {
@@ -59,7 +85,34 @@ async function retryFirebaseStep(fn) {
       if (attempt < 2) await wait(300 + attempt * 600);
     }
   }
-  throw lastError;
+  throw new Error(`${lastError?.message || 'Firebase request failed'} (3 attempts failed)`);
+}
+
+async function firebaseJsonWithAbort(path, options = {}, ms = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  const method = String(options.method || 'GET').toUpperCase();
+  const route = firebaseUrl(path).includes('/__firebase?') ? 'local Firebase proxy' : 'Firebase';
+  try {
+    const res = await fetch(firebaseUrl(path), {
+      cache: 'no-store',
+      ...options,
+      signal: controller.signal
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || (data && typeof data.error === 'string')) {
+      const detail = data?.error || `${res.status} ${res.statusText || ''}`.trim();
+      throw new Error(`${route} ${method} ${path} failed: ${detail}`);
+    }
+    return data;
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error(`${route} ${method} ${path} timed out after ${Math.round(ms / 1000)}s`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function selectedPoll() {
@@ -129,19 +182,27 @@ async function loadAll() {
     status('Missing event ID.', true);
     return;
   }
-  const [pollMap, nextUi, screen, eventInfo] = await withTimeout(Promise.all([
-    getPolls(eid).catch(() => ({})),
-    FB.get(`/events/${eid}/ui`).catch(() => ({})),
-    FB.get(`/events/${eid}/ui/publicScreen`).catch(() => ({})),
-    getEventInfo(eid).catch(() => ({}))
+  const [pollMap, currentPollId, screen, eventMeta] = await withTimeout(Promise.all([
+    firebaseJsonWithAbort(`/events/${eid}/polls`),
+    selectedPid
+      ? Promise.resolve(selectedPid)
+      : firebaseJsonWithAbort(`/events/${eid}/ui/currentPollId`).catch(() => ''),
+    firebaseJsonWithAbort(`/events/${eid}/ui/publicScreen`).catch(() => ({})),
+    eventName
+      ? Promise.resolve(null)
+      : firebaseJsonWithAbort(`/events/${eid}/meta`).catch(() => ({}))
   ]), 'Voting V2 loading');
   polls = pollMap || {};
-  ui = nextUi || {};
   publicScreen = screen || {};
+  ui = {
+    currentPollId: currentPollId || '',
+    pollResultsStep: Number(publicScreen?.revealStep || 0)
+  };
   if (!selectedPid || !polls[selectedPid]) {
     selectedPid = ui.currentPollId && polls[ui.currentPollId] ? ui.currentPollId : Object.keys(polls)[0] || '';
   }
-  document.title = `Voting Control${eventInfo?.meta?.name ? ` - ${eventInfo.meta.name}` : ''}`;
+  if (eventMeta?.name) eventName = eventMeta.name;
+  document.title = `Voting Control${eventName ? ` - ${eventName}` : ''}`;
   render();
   status(`Ready. ${Object.keys(polls || {}).length} polls loaded.`);
 }
@@ -176,69 +237,85 @@ function requirePoll() {
   return poll;
 }
 
-async function writeLegacyStage(patch) {
-  await withTimeout(retryFirebaseStep(() => FB.patch(`/events/${eid}/ui`, patch)), `legacy voting-stage write /events/${eid}/ui`, 18000);
+async function refreshSelectedPoll() {
+  const fallback = requirePoll();
+  const latest = await withTimeout(
+    getPoll(eid, selectedPid),
+    `latest voter records read /events/${eid}/polls/${selectedPid}`,
+    18000
+  );
+  if (!latest) throw new Error('The selected poll could not be read from Firebase.');
+  polls[selectedPid] = latest;
+  return latest || fallback;
 }
 
-async function writePublicScreen(state) {
-  await withTimeout(retryFirebaseStep(() => FB.put(`/events/${eid}/ui/publicScreen`, state)), `public-screen write /events/${eid}/ui/publicScreen`, 18000);
+async function writeVotingScene(legacyPatch, publicState) {
+  const path = `/events/${eid}/ui`;
+  const patch = { ...legacyPatch, publicScreen: publicState };
+  await withTimeout(retryFirebaseStep(() => firebaseJsonWithAbort(path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch)
+  }, 5000)), `voting scene write ${path}`, 18000);
+  ui = { ...ui, ...legacyPatch };
+  publicScreen = publicState;
+  render();
 }
 
 async function setStandby() {
   requirePoll();
-  await writeLegacyStage({
+  await writeVotingScene({
     currentPollId: selectedPid,
     showPollQR: false,
     pollResultsTrigger: null,
     pollResultsStep: 0
-  });
-  await writePublicScreen({ mode: 'v2Draw', updatedAt: Date.now(), message: 'Voting standby' });
+  }, { mode: 'v2Draw', updatedAt: Date.now(), message: 'Voting standby' });
 }
 
 async function showQr() {
   const poll = requirePoll();
-  await writeLegacyStage({
+  await writeVotingScene({
     currentPollId: selectedPid,
     showPollQR: true,
     pollResultsTrigger: null,
     pollResultsStep: 0
-  });
-  await writePublicScreen(buildPollScreen(poll, 'qr'));
+  }, buildPollScreen(poll, 'qr'));
 }
 
 async function openVoting() {
   const poll = requirePoll();
   await withTimeout(setActive(eid, selectedPid, true), `poll active write /events/${eid}/polls/${selectedPid}/active`, 18000);
-  await writeLegacyStage({
+  polls[selectedPid] = { ...poll, active: true };
+  await writeVotingScene({
     currentPollId: selectedPid,
     showPollQR: true,
     pollResultsTrigger: null,
     pollResultsStep: 0
-  });
-  await writePublicScreen(buildPollScreen(poll, 'qr'));
+  }, buildPollScreen(poll, 'qr'));
 }
 
 async function closeVoting() {
-  const poll = requirePoll();
+  const poll = await refreshSelectedPoll();
   if (totalVotes(poll) === 0 && !confirm('Close voting with 0 votes?')) return;
   await withTimeout(setActive(eid, selectedPid, false), `poll active write /events/${eid}/polls/${selectedPid}/active`, 18000);
+  polls[selectedPid] = { ...poll, active: false };
 }
 
 async function startResults() {
-  const poll = requirePoll();
+  let poll = requirePoll();
   if (poll.active !== false) {
     if (!confirm('Voting is still open. Close voting and reveal results?')) return;
     await withTimeout(setActive(eid, selectedPid, false), `poll active write /events/${eid}/polls/${selectedPid}/active`, 18000);
   }
+  poll = await refreshSelectedPoll();
   const trigger = Date.now();
-  await writeLegacyStage({
+  await writeVotingScene({
     currentPollId: selectedPid,
     showPollQR: false,
     pollResultsTrigger: trigger,
     pollResultsStep: 0,
     pollResultsOrder: 'original'
-  });
-  await writePublicScreen(buildPollScreen(poll, 'results', 0, false));
+  }, buildPollScreen(poll, 'results', 0, false));
 }
 
 async function nextResult() {
@@ -248,24 +325,27 @@ async function nextResult() {
     : Number(ui.pollResultsStep || 0);
   const count = publicResultItems(poll).length;
   const next = Math.min(count, current + 1);
-  await writeLegacyStage({ currentPollId: selectedPid, pollResultsStep: next });
-  await writePublicScreen(buildPollScreen(poll, 'results', next, next >= count));
+  await writeVotingScene(
+    { currentPollId: selectedPid, pollResultsStep: next },
+    buildPollScreen(poll, 'results', next, next >= count)
+  );
 }
 
 async function revealAll() {
   const poll = requirePoll();
   const count = publicResultItems(poll).length;
-  await writeLegacyStage({ currentPollId: selectedPid, showPollQR: false, pollResultsStep: count });
-  await writePublicScreen(buildPollScreen(poll, 'results', count, true));
+  await writeVotingScene(
+    { currentPollId: selectedPid, showPollQR: false, pollResultsStep: count },
+    buildPollScreen(poll, 'results', count, true)
+  );
 }
 
 async function clearStage() {
-  await writeLegacyStage({
+  await writeVotingScene({
     showPollQR: false,
     pollResultsTrigger: null,
     pollResultsStep: 0
-  });
-  await writePublicScreen({ mode: 'v2Draw', updatedAt: Date.now(), message: 'Returned to V2 draw screen' });
+  }, { mode: 'v2Draw', updatedAt: Date.now(), message: 'Returned to V2 draw screen' });
 }
 
 function renderPollSelect() {
@@ -365,14 +445,17 @@ function render() {
 }
 
 function bindControls() {
+  $('backCms').href = cmsUrl();
+  $('v2PublicLink').href = v2PublicUrl();
+  $('v2PublicLink').textContent = v2PublicUrl();
   $('pollSelect')?.addEventListener('change', event => {
     selectedPid = event.target.value || '';
     render();
   });
-  $('openPublic')?.addEventListener('click', () => window.open(v2PublicUrl(), '_blank'));
+  $('openPublic').href = v2PublicUrl();
   $('copyPublic')?.addEventListener('click', async () => {
-    await navigator.clipboard.writeText(v2PublicUrl()).catch(() => {});
-    status('Public link copied.');
+    const copied = await copyText(v2PublicUrl());
+    status(copied ? 'Public link copied.' : 'Copy failed. Select and copy the public link above.', !copied);
   });
   $('standbyPoll')?.addEventListener('click', () => run('Set standby', setStandby));
   $('showQr')?.addEventListener('click', () => run('Show QR', showQr));
@@ -396,10 +479,6 @@ async function boot() {
     FB.listen(`/events/${eid}/polls`, next => {
       polls = next || {};
       if (!selectedPid || !polls[selectedPid]) selectedPid = Object.keys(polls)[0] || '';
-      render();
-    }, { fallbackMs: 4000, transport: 'poll' });
-    FB.listen(`/events/${eid}/ui`, next => {
-      ui = next || {};
       render();
     }, { fallbackMs: 4000, transport: 'poll' });
     FB.listen(`/events/${eid}/ui/publicScreen`, next => {

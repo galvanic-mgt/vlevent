@@ -1,7 +1,7 @@
 import { FB } from './fb.js';
 import { getAssets } from './core_firebase.js';
 import { applyBackground } from './ui_background.js';
-import { voteCountsFromPoll } from './polls_public_firebase.js';
+import { voteCountsFromPoll } from './polls_public_firebase.js?v=20260712f';
 
 const url = new URL(location.href);
 const eid = url.searchParams.get('event');
