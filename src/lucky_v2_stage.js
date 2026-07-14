@@ -340,7 +340,7 @@ export function renderV2Stage(state = {}) {
     stage.classList.toggle('is-clear', state.status === 'clear');
     stage.classList.toggle('is-poll', isPoll);
     if (state.status === 'clear') stage.classList.remove('is-lever-pull');
-    const leverKey = `${state.drawId || state.updatedAt || ''}:${state.status || ''}`;
+    const leverKey = state.drawId || state.updatedAt || '';
     if (isInstant) {
       lastLeverKey = leverKey;
       stage.classList.remove('is-lever-pull');

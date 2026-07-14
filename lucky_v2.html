@@ -54,7 +54,7 @@
     .v2-lever-base::before{content:"";position:absolute;left:10px;right:10px;top:12px;height:9px;border-radius:999px;background:linear-gradient(90deg,#0b101a,#45536a,#0b101a);box-shadow:0 14px 0 rgba(255,255,255,.12)}
     .v2-stage.is-spinning .v2-lever-arm,.v2-stage.is-lever-pull .v2-lever-arm{animation:v2LeverPull 1.7s cubic-bezier(.16,.86,.25,1) both}
     .v2-stage.is-spinning .v2-lever-knob,.v2-stage.is-lever-pull .v2-lever-knob{animation:v2LeverKnob 1.7s cubic-bezier(.16,.86,.25,1) both}
-    .v2-stage.is-spinning .v2-lever,.v2-stage.is-lever-pull .v2-lever{animation:v2LeverBody 1.7s ease-out both}
+    .v2-stage.is-lever-pull .v2-lever{animation:v2LeverBody 1.7s ease-out both}
     .v2-stage.is-spinning .v2-lever-rail::after,.v2-stage.is-lever-pull .v2-lever-rail::after{animation:v2LeverRailLight 1.7s ease-out both}
     .v2-stage-content{position:relative;z-index:2;height:100%;display:grid;grid-template-rows:110px minmax(0,1fr) 92px;padding:28px;gap:18px}
     .v2-stage-content>div{min-width:0}
@@ -96,7 +96,7 @@
     @keyframes v2LeverRailLight{0%{top:14px;opacity:.5}34%,70%{top:110px;opacity:.95}100%{top:14px;opacity:.5}}
     .v2-lever{right:12px;top:45%;width:72px;height:310px;background:url("./assets/lever/lever-01.png") center/contain no-repeat;filter:drop-shadow(0 20px 24px rgba(0,0,0,.52));transform:translateY(-50%)}
     .v2-lever::before,.v2-lever-rail,.v2-lever-arm,.v2-lever-base{display:none}
-    .v2-stage.is-spinning .v2-lever,.v2-stage.is-lever-pull .v2-lever{animation:v2LeverFrames 3s linear both}
+    .v2-stage.is-lever-pull .v2-lever{animation:v2LeverFrames 3s linear both}
     .v2-stage.is-spinning .v2-lever-arm,.v2-stage.is-lever-pull .v2-lever-arm,.v2-stage.is-spinning .v2-lever-knob,.v2-stage.is-lever-pull .v2-lever-knob,.v2-stage.is-spinning .v2-lever-rail::after,.v2-stage.is-lever-pull .v2-lever-rail::after{animation:none}
     @keyframes v2LeverFrames{
       0%,7%{background-image:url("./assets/lever/lever-01.png")}
@@ -210,6 +210,6 @@
       </section>
     </main>
   </div>
-  <script type="module" src="./src/lucky_v2_control.js?v=20260713b"></script>
+  <script type="module" src="./src/lucky_v2_control.js?v=20260714a"></script>
 </body>
 </html>

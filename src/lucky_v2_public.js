@@ -1,8 +1,10 @@
 import { FB } from './fb.js?v=20260706b';
 import { initEventFromUrl, loadV2Assets, v2Root } from './lucky_v2_core.js?v=20260710c';
-import { applyV2Assets, renderV2Stage } from './lucky_v2_stage.js?v=20260713b';
+import { applyV2Assets, renderV2Stage } from './lucky_v2_stage.js?v=20260714a';
+import { initPublicV2Audio } from './public_v2_audio.js?v=20260715b';
 
 const eid = initEventFromUrl();
+const publicV2Audio = initPublicV2Audio();
 let lastV2State = null;
 let lastPublicScreen = null;
 
@@ -17,8 +19,10 @@ function pickStageState() {
   return lastV2State || { status: 'clear', message: 'Waiting for V2 control' };
 }
 
-function rerender() {
-  renderV2Stage(pickStageState());
+function rerender(options) {
+  const state = pickStageState();
+  renderV2Stage(state);
+  publicV2Audio.syncState(state, options);
 }
 
 async function refreshAssets() {
@@ -38,7 +42,7 @@ async function boot() {
   ]);
   lastV2State = state || { status: 'clear', message: 'Waiting for V2 control' };
   lastPublicScreen = publicScreen || null;
-  rerender();
+  rerender({ initial: true });
   FB.listen?.(`${v2Root(eid)}/ui/stageState`, next => {
     lastV2State = next || { status: 'clear', message: 'Waiting for V2 control' };
     rerender();
