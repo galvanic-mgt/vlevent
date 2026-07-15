@@ -3,6 +3,7 @@ import { cachePublicV2AudioFiles } from './public_v2_audio_cache.js?v=20260715a'
 export const PUBLIC_V2_AUDIO_URLS = Object.freeze({
   lever: new URL('../assets/audio/machine-lever.wav?v=20260715a', import.meta.url).href,
   spin: new URL('../assets/audio/slot-spinning.mp3?v=20260715a', import.meta.url).href,
+  instantDraw: new URL('../assets/audio/instant-draw-ding.wav?v=20260715c', import.meta.url).href,
   votingThird: new URL('../assets/audio/voting-third.m4a?v=20260715a', import.meta.url).href,
   votingSecond: new URL('../assets/audio/voting-second.m4a?v=20260715a', import.meta.url).href,
   votingWinner: new URL('../assets/audio/voting-winner.m4a?v=20260715a', import.meta.url).href
@@ -18,7 +19,7 @@ export function votingCueForStep(itemCount, revealStep) {
   return 'votingWinner';
 }
 
-export function createPublicV2AudioStateTracker({ onDrawStart, onDrawEnd, onVoteCue } = {}) {
+export function createPublicV2AudioStateTracker({ onDrawStart, onDrawEnd, onInstantDraw, onVoteCue } = {}) {
   let initialized = false;
   let lastDrawKey = '';
   let lastPollId = '';
@@ -60,6 +61,9 @@ export function createPublicV2AudioStateTracker({ onDrawStart, onDrawEnd, onVote
         return;
       }
       onDrawEnd?.();
+      if (!suppressCue && drawKey && drawKey !== lastDrawKey && state.status === 'revealed' && state.instant === true) {
+        onInstantDraw?.();
+      }
       if (drawKey && state.status === 'revealed') lastDrawKey = drawKey;
     }
   };
@@ -73,6 +77,7 @@ let rawAudio = null;
 let decodedAudio = null;
 let spinPlayback = null;
 let spinStopTimer = 0;
+let instantPlayback = null;
 let votePlayback = null;
 
 function audioContextConstructor() {
@@ -160,6 +165,17 @@ function startDrawAudio() {
   spinStopTimer = setTimeout(stopSpin, 10000);
 }
 
+function playInstantDrawCue() {
+  stopPlayback(instantPlayback);
+  instantPlayback = playBuffer('instantDraw', { volume: 1 });
+  if (instantPlayback) {
+    const current = instantPlayback;
+    current.source.addEventListener('ended', () => {
+      if (instantPlayback === current) instantPlayback = null;
+    }, { once: true });
+  }
+}
+
 function playVoteCue(name) {
   stopPlayback(votePlayback);
   votePlayback = playBuffer(name, { volume: 1 });
@@ -174,6 +190,7 @@ function playVoteCue(name) {
 const stateTracker = createPublicV2AudioStateTracker({
   onDrawStart: startDrawAudio,
   onDrawEnd: stopSpin,
+  onInstantDraw: playInstantDrawCue,
   onVoteCue: playVoteCue
 });
 
