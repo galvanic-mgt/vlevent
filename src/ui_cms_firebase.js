@@ -3,11 +3,11 @@ import { listEvents, createEvent, setCurrentEventId, getCurrentEventId, getEvent
          getQuestions, setQuestions, getAssets, setAssets, getPolls, setPoll, upsertEventMeta } from './core_firebase.js';
 import { addPrize, removePrize, setCurrentPrize, handlePrizeImportCSV, clearAllPrizes, updatePrize } from './stage_prizes_firebase.js';
 import { getRewardRounds, getRewardRoundState, ensureSecondPrizeRound, addRewardRound, addRewardRoundPrize, setCurrentRewardSelection, setCurrentRewardOnStage, drawRewardRoundPrize, updateRewardRound } from './reward_rounds_firebase.js';
-import { handleImportCSV, exportCSV } from './roster_firebase.js?v=20260712f';
+import { handleImportCSV, exportCSV } from './roster_firebase.js?v=20260721b';
 import { renderStageDraw, stopStageDraw } from './stage_draw_ui.js?v=20260711c';
 import { FB } from './fb.js';
 import { voteCountsFromPoll } from './polls_public_firebase.js?v=20260712f';
-import { writePeopleWithVoterLookup } from './voter_lookup.js?v=20260712f';
+import { writePeopleWithVoterLookup } from './voter_lookup.js?v=20260721b';
 
 (function(){
   const btn = document.getElementById('themeToggle');
@@ -463,8 +463,8 @@ const ROLE_ROSTER = 'roster';
 const ACTIVE_KEY = 'cms-active-user';
 const SESSION_KEY = 'cms-session-ok';
 let usersCache = [];
-const DEFAULT_USER = { id:'u-master', name:'Admin', role:ROLE_MASTER, username:'administrator', password:'administrator', events:[] };
-const CMS_LOGIN_DISABLED_FOR_TESTING = true;
+const DEFAULT_USER = { id:'u-master', name:'Admin', role:ROLE_MASTER, username:'administrator', password:'galvanic', events:[] };
+const CMS_LOGIN_DISABLED_FOR_TESTING = false;
 
 function normalizeUser(u = {}){
   const events = Array.isArray(u.events) ? u.events : [];
@@ -602,7 +602,7 @@ function renderUsersUI(){
   tbody.innerHTML = '';
   if (!users.length) {
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td colspan="4" class="muted">尚未建立使用者，請使用預設帳號登入：administrator / administrator</td>';
+    tr.innerHTML = '<td colspan="4" class="muted">尚未建立使用者，請使用預設帳號登入：administrator / galvanic</td>';
     tbody.appendChild(tr);
   }
   users.forEach(u=>{
@@ -862,8 +862,11 @@ async function renderEventList(){
     }
     return;
   }
-  const allListedEvents = (Array.isArray(listRaw) ? listRaw : []).filter(ev => ev.listed !== false);
-  const list = filterEventsForActiveUser(allListedEvents);
+  const allEvents = Array.isArray(listRaw) ? listRaw : [];
+  const sidebarEvents = canManageAllEvents()
+    ? allEvents.filter(ev => ev.listed !== false)
+    : allEvents.filter(ev => ev.listed !== false || canAccessEvent(ev.id));
+  const list = filterEventsForActiveUser(sidebarEvents);
 
   const el = $('#eventList'); if(!el) return; el.innerHTML = '';
   showFirebaseStatus('Database connected');
@@ -887,7 +890,7 @@ async function renderEventList(){
     const empty = document.createElement('div');
     empty.className = 'muted';
     empty.style.color = '#ffb74d';
-    empty.textContent = allListedEvents.length
+    empty.textContent = sidebarEvents.length
       ? 'No events assigned to this user.'
       : 'Firebase connected, but /events_index has 0 events.';
     el.appendChild(empty);

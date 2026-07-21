@@ -40,7 +40,7 @@
       </head>
 <body class="cms-auth-pending">
 <div id="cmsBootStatus" class="cms-boot-status" role="status" aria-live="polite"><div class="cms-boot-card"><p id="cmsBootTitle" class="cms-boot-title">Loading CMS...</p><p id="cmsBootDetail" class="cms-boot-detail">Checking login and event data.</p></div></div>
-<div id="loginGate" class="login-gate" aria-modal="true" role="dialog"><form id="loginForm" class="login-card"><div class="login-brand">VLEVENT CMS</div><h3>登入後台</h3><label>帳號 <input id="loginUser" autocomplete="username" placeholder="administrator"/></label><label>密碼 <input id="loginPass" type="password" autocomplete="current-password" placeholder="administrator"/></label><div id="loginError" class="login-error" aria-live="polite"></div><button class="btn primary" type="submit">登入</button></form></div>
+<div id="loginGate" class="login-gate" aria-modal="true" role="dialog"><form id="loginForm" class="login-card"><div class="login-brand">VLEVENT CMS</div><h3>登入後台</h3><label>帳號 <input id="loginUser" autocomplete="username" placeholder="administrator"/></label><label>密碼 <input id="loginPass" type="password" autocomplete="current-password" placeholder="password"/></label><div id="loginError" class="login-error" aria-live="polite"></div><button class="btn primary" type="submit">登入</button></form></div>
 <header><div class="container row"><div class="tabs"><button class="btn primary active" type="button">後台 CMS</button></div>
   <div class="bar" style="margin-left:auto"><button id="themeToggle" class="btn small">☀️ Normal Mode</button>
 <a class="btn btn-public" href="#" id="btnPublicBoard" role="button">Public Board ↗</a>
@@ -505,7 +505,7 @@
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
 <script type="module">
-  import { startApp } from './src/boot.js?v=20260713a';
+  import { startApp } from './src/boot.js?v=20260721b';
   startApp();
 </script>
 

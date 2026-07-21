@@ -83,12 +83,7 @@ export function buildPollVoterEligibility(people = []) {
 export async function writePeopleWithVoterLookup(eid, people = []) {
   if (!eid) throw new Error('Missing event ID');
   const list = Array.isArray(people) ? people : [];
-  const lookup = buildVoterLookup(list);
-  return await FB.patch(`/events/${eid}`, {
-    people: list,
-    voterLookup: Object.keys(lookup).length ? lookup : null,
-    voterLookupMeta: lookupMeta(list, lookup)
-  });
+  return await FB.put(`/events/${eid}/people`, list);
 }
 
 export async function rebuildVoterLookup(eid) {
