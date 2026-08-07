@@ -73,7 +73,8 @@ body{
 .lp-booth-status-row:last-child{border-bottom:0}
 .lp-booth-participated{color:#38d26b;font-weight:800}
 .lp-booth-not-participated{color:#ff5a67;font-weight:800}
-.lp-live-photo-link{margin-top:8px;text-align:center}
+.lp-landing-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.lp-landing-actions .lp-live-photo-link{flex:1 1 180px;align-items:center;justify-content:center;margin:0;text-align:center}
 
 @media (max-width:520px){
   .lp-form{grid-template-columns:1fr}

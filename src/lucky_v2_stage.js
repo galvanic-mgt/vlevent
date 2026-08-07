@@ -336,9 +336,11 @@ export function renderV2Stage(state = {}) {
   if (giftLeftEl) giftLeftEl.textContent = giftBubbleText(state.giftStats);
   if (stage) {
     const isPoll = state.mode === 'poll' || state.kind === 'poll';
+    const isPollQr = isPoll && state.pollDisplay === 'qr';
     stage.classList.toggle('is-spinning', hasSpinCandidates);
     stage.classList.toggle('is-clear', state.status === 'clear');
     stage.classList.toggle('is-poll', isPoll);
+    stage.classList.toggle('is-poll-qr', isPollQr);
     if (state.status === 'clear') stage.classList.remove('is-lever-pull');
     const leverKey = state.drawId || state.updatedAt || '';
     if (isInstant) {

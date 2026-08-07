@@ -3,7 +3,7 @@ import { listEvents, createEvent, setCurrentEventId, getCurrentEventId, getEvent
          getQuestions, setQuestions, getAssets, setAssets, getPolls, setPoll, upsertEventMeta } from './core_firebase.js';
 import { addPrize, removePrize, setCurrentPrize, handlePrizeImportCSV, clearAllPrizes, updatePrize } from './stage_prizes_firebase.js';
 import { getRewardRounds, getRewardRoundState, ensureSecondPrizeRound, addRewardRound, addRewardRoundPrize, setCurrentRewardSelection, setCurrentRewardOnStage, drawRewardRoundPrize, updateRewardRound } from './reward_rounds_firebase.js';
-import { handleImportCSV, exportCSV } from './roster_firebase.js?v=20260721b';
+import { handleImportCSV, exportCSV } from './roster_firebase.js?v=20260731a';
 import { renderStageDraw, stopStageDraw } from './stage_draw_ui.js?v=20260711c';
 import { FB } from './fb.js';
 import { voteCountsFromPoll } from './polls_public_firebase.js?v=20260712f';
@@ -113,6 +113,23 @@ function ensureLandingQR(eid) {
           <span id="landingLivePhotoStatus" class="muted"></span>
         </div>
       </div>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.12)">
+        <strong>Additional landing-page button</strong>
+        <div class="grid-2" style="gap:12px;margin-top:8px">
+          <label style="display:flex;flex-direction:column;gap:6px">
+            <span>Button text</span>
+            <input id="landingExtraButtonLabel" placeholder="EVENT LINK" />
+          </label>
+          <label style="display:flex;flex-direction:column;gap:6px">
+            <span>Button link</span>
+            <input id="landingExtraButtonLink" placeholder="https://example.com" />
+          </label>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button id="saveLandingExtraButton" class="btn primary" type="button">Save additional button</button>
+          <span id="landingExtraButtonStatus" class="muted"></span>
+        </div>
+      </div>
     `;
     page.appendChild(card);
   }
@@ -172,6 +189,34 @@ function ensureLandingQR(eid) {
       try {
         await FB.patch(`/events/${activeEid}/info`, { landingLivePhotoLink: value });
         if (status) status.textContent = value ? 'LIVE PHOTO link saved.' : 'LIVE PHOTO link cleared.';
+      } catch (err) {
+        if (status) {
+          status.textContent = `Save failed: ${err?.message || String(err)}`;
+          status.style.color = '#ff5a67';
+        }
+      }
+    });
+  }
+
+  const saveExtraButton = document.getElementById('saveLandingExtraButton');
+  if (saveExtraButton && !saveExtraButton.dataset.bound) {
+    saveExtraButton.dataset.bound = '1';
+    saveExtraButton.addEventListener('click', async () => {
+      const activeEid = getCurrentEventId();
+      if (!activeEid) return;
+      const label = document.getElementById('landingExtraButtonLabel')?.value.trim() || '';
+      const link = document.getElementById('landingExtraButtonLink')?.value.trim() || '';
+      const status = document.getElementById('landingExtraButtonStatus');
+      if (status) {
+        status.textContent = 'Saving...';
+        status.style.color = '';
+      }
+      try {
+        await FB.patch(`/events/${activeEid}/info`, {
+          landingExtraButtonLabel: label,
+          landingExtraButtonLink: link
+        });
+        if (status) status.textContent = link ? 'Additional landing button saved.' : 'Additional landing button hidden.';
       } catch (err) {
         if (status) {
           status.textContent = `Save failed: ${err?.message || String(err)}`;
@@ -956,6 +1001,9 @@ t('metaClient',meta.client);
     ensureLandingQR(eid);
     t('landingLivePhotoLink', info.landingLivePhotoLink);
     { const el=document.getElementById('landingLivePhotoStatus'); if(el) el.textContent = ''; }
+    t('landingExtraButtonLabel', info.landingExtraButtonLabel);
+    t('landingExtraButtonLink', info.landingExtraButtonLink);
+    { const el=document.getElementById('landingExtraButtonStatus'); if(el) el.textContent = ''; }
     ensurePreEventApplyQR(eid);
 }
 

@@ -26,8 +26,8 @@
     .tabs { display:flex; gap:8px; }
     .tab { flex:1; text-align:center; padding:12px 10px; border-radius:12px; border:1px solid var(--border); background:rgba(255,255,255,.05); font-weight:600; }
     .tab.active { border-color: var(--accent); box-shadow:0 6px 24px rgba(0,0,0,.35); background:linear-gradient(120deg, rgba(255,216,77,.15), rgba(255,139,95,.14)); }
-    .opt-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:12px; }
-    .opt-card { width:100%; text-align:left; padding:12px 12px; border-radius:14px; border:1px solid rgba(0,0,0,.1); background:rgba(255,255,255,.75); color:#000; cursor:pointer; display:flex; gap:12px; align-items:center; transition:transform 80ms ease, border-color 120ms, box-shadow 120ms; }
+    .opt-grid { display:flex; flex-wrap:wrap; justify-content:center; gap:12px; }
+    .opt-card { width:100%; max-width:320px; flex:1 1 240px; text-align:left; padding:12px 12px; border-radius:14px; border:1px solid rgba(0,0,0,.1); background:rgba(255,255,255,.75); color:#000; cursor:pointer; display:flex; gap:12px; align-items:center; transition:transform 80ms ease, border-color 120ms, box-shadow 120ms; }
     .opt-card:hover { border-color: rgba(0,0,0,.2); box-shadow:0 6px 16px rgba(0,0,0,.25); transform: translateY(-2px); }
     .opt-card:disabled { opacity:.55; cursor:not-allowed; }
     .thumb { width:64px; height:64px; border-radius:12px; background:rgba(255,255,255,.85); border:1px solid rgba(0,0,0,.08); display:grid; place-items:center; overflow:hidden; flex:0 0 auto; }

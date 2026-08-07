@@ -85,7 +85,9 @@ function normalizeBatch(entry = {}) {
     prizeId: entry.prizeId || '',
     prizeName: entry.prizeName || '',
     winners: Array.isArray(entry.winners) ? entry.winners : [],
+    action: entry.action || 'draw',
     undone: entry.undone === true,
+    undoneAt: Number(entry.undoneAt || 0),
     supersededBy: entry.supersededBy || '',
     createdAt: Number(entry.createdAt || 0)
   };
@@ -191,25 +193,22 @@ export async function loadV2Context(eid, options = {}) {
   };
 }
 
-export function activeBatches(v2 = {}) {
-  const main = objectValues(v2?.main?.batches).map(normalizeBatch);
-  const reward = objectValues(v2?.rewardRounds).flatMap(round =>
-    objectValues(round?.batches).map(normalizeBatch)
-  );
-  return main.concat(reward)
-    .filter(b => b.id && !b.undone && !b.supersededBy)
-    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-}
-
-export function recentBatches(v2 = {}, limit = 8) {
+export function allBatches(v2 = {}) {
   const main = objectValues(v2?.main?.batches).map(normalizeBatch);
   const reward = objectValues(v2?.rewardRounds).flatMap(round =>
     objectValues(round?.batches).map(normalizeBatch)
   );
   return main.concat(reward)
     .filter(b => b.id)
-    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-    .slice(0, limit);
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+
+export function activeBatches(v2 = {}) {
+  return allBatches(v2).filter(b => !b.undone && !b.supersededBy);
+}
+
+export function recentBatches(v2 = {}, limit = 8) {
+  return allBatches(v2).slice(0, limit);
 }
 
 function activeWinnerCountForPrize(v2, prizeId, mode, roundId) {
@@ -574,9 +573,19 @@ export async function undoLastV2(eid) {
   const keyPath = batch.mode === 'extra'
     ? `rewardRounds/${batch.roundId}/winnerKeys`
     : 'main/winnerKeys';
+  const now = Date.now();
   patch[batchPath] = true;
+  patch[batchPath.replace(/\/undone$/, '/undoneAt')] = now;
   applyIndexPatch(patch, keyPath, batch.winners || [], null);
-  patch[`auditLog/${makeId('audit')}`] = { action: 'undo', drawId: batch.id, time: Date.now() };
+  patch[`auditLog/${makeId('audit')}`] = {
+    action: 'undo',
+    drawId: batch.id,
+    prizeId: batch.prizeId || '',
+    prizeName: batch.prizeName || '',
+    mode: batch.mode || 'main',
+    roundId: batch.roundId || 'main',
+    time: now
+  };
   patch['ui/lastBatchId'] = null;
   await withFirebaseTimeout(FB.patch(v2Root(eid), patch), `undo write ${v2Root(eid)}`);
   const stageState = await publishStage(eid, {
@@ -628,9 +637,20 @@ export async function loadV2Assets(eid) {
   return { title, assets };
 }
 
-export function csvForBatches(batches) {
-  const rows = [['Mode', 'Round', 'Prize', 'Name', 'Department', 'Phone', 'Code', 'Time', 'Batch ID']];
+export function csvForBatches(batches, auditLog = {}) {
+  const undoTimes = new Map();
+  objectValues(auditLog).forEach(entry => {
+    if (entry?.action !== 'undo' || !entry?.drawId) return;
+    const time = Number(entry.time || 0);
+    if (time > Number(undoTimes.get(entry.drawId) || 0)) undoTimes.set(entry.drawId, time);
+  });
+  const rows = [[
+    'Mode', 'Round', 'Prize', 'Name', 'Department', 'Phone', 'Code',
+    'Winner Time', 'Batch ID', 'Action', 'Status', 'Undo Time'
+  ]];
   (batches || []).forEach(batch => {
+    const status = batch.undone ? 'Undone' : (batch.supersededBy ? 'Replaced' : 'Active');
+    const undoTime = Number(batch.undoneAt || undoTimes.get(batch.id) || 0);
     (batch.winners || []).forEach(w => {
       rows.push([
         batch.mode || '',
@@ -641,7 +661,10 @@ export function csvForBatches(batches) {
         w.phone || '',
         w.code || '',
         w.time ? new Date(w.time).toLocaleString() : '',
-        batch.id || ''
+        batch.id || '',
+        batch.action || 'draw',
+        status,
+        undoTime ? new Date(undoTime).toLocaleString() : ''
       ]);
     });
   });

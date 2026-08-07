@@ -49,7 +49,6 @@
         <div class="lp-booth-head">
           <h4>遊戲攤位參與紀錄 (Game Booth Participation)</h4>
           <button id="startBoothScanner" class="lp-primary" type="button">開啟相機掃描 QR (Open camera to scan QR)</button>
-          <button id="signOutBoothSession" class="lp-secondary" type="button">登出測試 (Sign out for testing)</button>
         </div>
         <video id="boothScannerVideo" class="lp-booth-video" playsinline muted></video>
         <div class="lp-booth-manual">
@@ -58,7 +57,10 @@
         </div>
         <div id="boothStatusList" class="lp-booth-status-list"></div>
       </div>
-      <a id="livePhotoLinkButton" class="lp-primary lp-live-photo-link" href="#" target="_blank" rel="noopener" style="display:none">LIVE PHOTO</a>
+      <div id="landingActionButtons" class="lp-landing-actions" style="display:none">
+        <a id="livePhotoLinkButton" class="lp-primary lp-live-photo-link" href="#" target="_blank" rel="noopener" style="display:none">LIVE PHOTO</a>
+        <a id="landingExtraLinkButton" class="lp-primary lp-live-photo-link" href="#" target="_blank" rel="noopener" style="display:none">EVENT LINK</a>
+      </div>
     </section>
 
     <!-- 活動提示（選填） -->
@@ -93,6 +95,6 @@
 
   <!-- landing.js：負責讀取 Firebase、顯示 LOGO / Banner / 背景、以及報到邏輯 -->
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-  <script src="./src/landing.js"></script>
+  <script src="./src/landing.js?v=20260807a"></script>
 </body>
 </html>

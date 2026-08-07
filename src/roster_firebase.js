@@ -1,6 +1,7 @@
 import { getCurrentEventId, getPeople, getEventInfo, getPrizes } from './core_firebase.js';
 import { FB } from './fb.js';
 import { writePeopleWithVoterLookup } from './voter_lookup.js?v=20260721b';
+import { activeBatches as activeV2Batches, keyIdFromKey, participantKey } from './lucky_v2_core.js?v=20260731a';
 
 export function normalizeName(s){ return (s || '').trim().replace(/\s+/g,' '); }
 
@@ -106,11 +107,12 @@ function formatHongKongDateTime(value, fallbackText = ''){
 
 export async function exportCSV(){
   const eid = getCurrentEventId();
-  const [info, people, prizes, rewardRounds] = await Promise.all([
+  const [info, people, prizes, rewardRounds, luckyV2] = await Promise.all([
     (await getEventInfo(eid)).info || {},
     getPeople(eid),
     getPrizes(eid),
-    FB.get(`/events/${eid}/ui/rewardRounds`).catch(()=>({}))
+    FB.get(`/events/${eid}/ui/rewardRounds`).catch(()=>({})),
+    FB.get(`/events/${eid}/ui/luckyV2`).catch(()=>({}))
   ]);
 
   const labelPhone = info.labelPhone || 'Phone';
@@ -122,6 +124,19 @@ export async function exportCSV(){
     (p.winners || []).forEach(w=>{
       const key = w?.phone ? `phone:${w.phone}` : `${w.name}||${w.dept||''}`;
       prizeMap.set(key, p.name || '');
+    });
+  });
+
+  // Lucky Draw V2 stores main and extra/second-round winners separately from
+  // the original prize records. Keep every active V2 gift on the person's row.
+  const v2GiftMap = new Map();
+  activeV2Batches(luckyV2 && !luckyV2.error ? luckyV2 : {}).forEach(batch => {
+    const roundLabel = batch.mode === 'extra' ? (batch.roundName || 'Second Draw') : 'Main Draw';
+    (batch.winners || []).forEach(winner => {
+      const keyId = winner?.keyId || keyIdFromKey(participantKey(winner));
+      const gifts = v2GiftMap.get(keyId) || new Set();
+      gifts.add(`${roundLabel}: ${batch.prizeName || ''}`.replace(/:\s*$/, ''));
+      v2GiftMap.set(keyId, gifts);
     });
   });
 
@@ -139,7 +154,7 @@ export async function exportCSV(){
   });
 
   const rows = [
-    ['Code', labelPhone, 'Name', labelDept, 'Table', 'Seat', 'Present', '首次登入時間', '最後登入時間', 'LuckyPrize', ...roundEntries.map(r => r.name)],
+    ['Code', labelPhone, 'Name', labelDept, 'Table', 'Seat', 'Present', '首次登入時間', '最後登入時間', 'LuckyPrize', 'Lucky Draw V2 Gifts', ...roundEntries.map(r => r.name)],
     ...people.map(p=>[
       p.code || '',
       p.phone || '',
@@ -151,6 +166,7 @@ export async function exportCSV(){
       p.firstLoginAtHK || formatHongKongDateTime(p.firstLoginAt),
       p.lastLoginAtHK || formatHongKongDateTime(p.lastLoginAt),
       prizeMap.get(p.phone ? `phone:${p.phone}` : `${p.name}||${p.dept||''}`) || p.prize || '',
+      Array.from(v2GiftMap.get(keyIdFromKey(participantKey(p))) || []).join(' | '),
       ...roundEntries.map(r => (p.rewardRounds && p.rewardRounds[r.id]) || '')
     ])
   ];

@@ -151,19 +151,6 @@ function restoreGuestSession(eid) {
   } catch (_) {}
 }
 
-function clearGuestSession() {
-  const key = boothSessionKey(currentEventId);
-  if (key) localStorage.removeItem(key);
-  currentGuestIndex = -1;
-  stopBoothScanner();
-  const panel = document.getElementById("gameBoothPanel");
-  if (panel) panel.style.display = "none";
-  const howToGetThere = document.getElementById("howToGetThereSection");
-  if (howToGetThere) howToGetThere.style.display = "";
-  renderGameBoothStatus();
-  showLandingMessage("已登出測試工作階段。你可以再次按報到 (Attend)。Session signed out. You can press Attend again for testing.", false);
-}
-
 function currentGuest() {
   return currentGuestIndex >= 0 ? landingPeople[currentGuestIndex] : null;
 }
@@ -346,7 +333,6 @@ function bindGameBoothControls() {
     await markGameBoothComplete(input?.value || "");
     if (input) input.value = "";
   });
-  document.getElementById("signOutBoothSession")?.addEventListener("click", clearGuestSession);
 }
 
 // ---- Event info + visuals ----
@@ -423,11 +409,21 @@ async function loadEventHeader(eid) {
   }
 
   const livePhotoButton = document.getElementById("livePhotoLinkButton");
+  const livePhotoLink = String(info.landingLivePhotoLink || "").trim();
   if (livePhotoButton) {
-    const livePhotoLink = String(info.landingLivePhotoLink || "").trim();
     livePhotoButton.style.display = livePhotoLink ? "inline-flex" : "none";
     if (livePhotoLink) livePhotoButton.href = livePhotoLink;
   }
+  const extraLinkButton = document.getElementById("landingExtraLinkButton");
+  const extraLink = String(info.landingExtraButtonLink || "").trim();
+  if (extraLinkButton) {
+    const extraLabel = String(info.landingExtraButtonLabel || "").trim() || "EVENT LINK";
+    extraLinkButton.textContent = extraLabel;
+    extraLinkButton.style.display = extraLink ? "inline-flex" : "none";
+    if (extraLink) extraLinkButton.href = extraLink;
+  }
+  const landingActionButtons = document.getElementById("landingActionButtons");
+  if (landingActionButtons) landingActionButtons.style.display = (livePhotoLink || extraLink) ? "flex" : "none";
   const hasNotes = Boolean((info.notes || "").trim());
   const hasMap = Boolean((info.mapUrl || "").trim());
   const hasTransport = hasBus || hasTrain || hasParking || hasNotes || hasMap;
@@ -575,7 +571,7 @@ function attachCheckin(eid) {
             .join(" · ")
         : "";
 
-      const successMsg = "已登記抽獎，歡迎！You have been registered for the lucky draw. Welcome!";
+      const successMsg = `${name}已登記抽獎，歡迎！You have been registered for the lucky draw. Welcome!`;
       const sessionSeatStr = seatTextForGuest(found);
       showMessage(successMsg, false);
 

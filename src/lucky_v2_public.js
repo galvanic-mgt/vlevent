@@ -1,6 +1,6 @@
 import { FB } from './fb.js?v=20260706b';
 import { initEventFromUrl, loadV2Assets, v2Root } from './lucky_v2_core.js?v=20260710c';
-import { applyV2Assets, renderV2Stage } from './lucky_v2_stage.js?v=20260714a';
+import { applyV2Assets, renderV2Stage } from './lucky_v2_stage.js?v=20260805a';
 import { initPublicV2Audio } from './public_v2_audio.js?v=20260715c';
 
 const eid = initEventFromUrl();
