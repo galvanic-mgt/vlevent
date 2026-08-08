@@ -1,6 +1,7 @@
 import traceback
 import json
 import queue
+import socket
 import threading
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -15,6 +16,15 @@ LOG_PATH = ROOT / "live-server.log"
 FIREBASE_BASE = "https://eva-lucky-draw-default-rtdb.asia-southeast1.firebasedatabase.app"
 STREAM_CLIENTS = []
 STREAM_LOCK = threading.Lock()
+
+
+class ExclusiveThreadingHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = False
+
+    def server_bind(self):
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 def normalize_firebase_path(raw_path):
@@ -76,12 +86,18 @@ class QuietHandler(SimpleHTTPRequestHandler):
         if should_echo_ui:
             broadcast_local_update(firebase_path, "put", body_json if self.command == "PUT" else None)
         headers = {"Content-Type": "application/json"}
+        for header_name in ("X-Firebase-ETag", "if-match"):
+            header_value = self.headers.get(header_name)
+            if header_value:
+                headers[header_name] = header_value
         req = request.Request(target, data=body, headers=headers, method=self.command)
         try:
             with request.urlopen(req, timeout=20) as res:
                 data = res.read()
                 self.send_response(res.status)
                 self.send_header("Content-Type", res.headers.get("Content-Type", "application/json"))
+                if res.headers.get("ETag"):
+                    self.send_header("ETag", res.headers.get("ETag"))
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(data)
@@ -93,6 +109,8 @@ class QuietHandler(SimpleHTTPRequestHandler):
             data = exc.read()
             self.send_response(exc.code)
             self.send_header("Content-Type", exc.headers.get("Content-Type", "application/json"))
+            if exc.headers.get("ETag"):
+                self.send_header("ETag", exc.headers.get("ETag"))
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(data)
@@ -200,7 +218,7 @@ class QuietHandler(SimpleHTTPRequestHandler):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, PUT, PATCH, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Firebase-ETag, if-match")
         self.end_headers()
 
     def do_GET(self):
@@ -246,7 +264,7 @@ class QuietHandler(SimpleHTTPRequestHandler):
 
 def main():
     handler = partial(QuietHandler, directory=str(ROOT))
-    server = ThreadingHTTPServer((HOST, PORT), handler)
+    server = ExclusiveThreadingHTTPServer((HOST, PORT), handler)
     with LOG_PATH.open("a", encoding="utf-8") as log:
         log.write(f"Serving {ROOT} at http://{HOST}:{PORT}/\n")
     server.serve_forever()

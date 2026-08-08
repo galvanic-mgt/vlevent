@@ -1441,8 +1441,14 @@ function renderRow(tr, p, idx, mode){
     tr.querySelector('.delete').onclick = async ()=>{
       const ok = confirm(`確定刪除「${p.name||''}」？`);
       if(!ok) return;
-      people.splice(idx, 1);
-      await setPeopleWithSync(eid, people);
+      const sourceIndex = people.indexOf(p);
+      if(sourceIndex < 0) {
+        alert('找不到此參加者，請重新整理後再試。');
+        return;
+      }
+      const nextPeople = people.slice();
+      nextPeople.splice(sourceIndex, 1);
+      await setPeopleWithSync(eid, nextPeople);
       await renderRoster();
     };
   }
