@@ -16,7 +16,7 @@ import {
   prizeAvailability,
   roundIdFor,
   v2Root
-} from './lucky_v2_core.js?v=20260731a';
+} from './lucky_v2_core.js?v=20260905a';
 import { applyV2Assets, renderV2Stage } from './lucky_v2_stage.js?v=20260714a';
 
 const eid = initEventFromUrl();
@@ -290,6 +290,7 @@ function applyActionResult(result) {
   }
   lastSummary = {
     ...lastSummary,
+    people: result.people || lastSummary.people,
     v2: nextV2,
     curPrizeId: result.stageState?.currentPrizeId || lastSummary.curPrizeId,
     active: activeBatches(nextV2),

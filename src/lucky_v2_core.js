@@ -193,6 +193,18 @@ export async function loadV2Context(eid, options = {}) {
   };
 }
 
+async function loadDrawContext(eid, cachedContext) {
+  if (!Array.isArray(cachedContext?.people) || !Array.isArray(cachedContext?.prizes)) {
+    return loadV2Context(eid, { requirePeople: true });
+  }
+  // Attendance may have changed in the roster or another control page.
+  const [people, v2] = await Promise.all([
+    withFirebaseTimeout(getPeople(eid), `roster read /events/${eid}/people`),
+    withFirebaseTimeout(FB.get(v2Root(eid)), `Lucky V2 state read ${v2Root(eid)}`)
+  ]);
+  return { ...cachedContext, people: Array.isArray(people) ? people : [], v2: v2 || {} };
+}
+
 export function allBatches(v2 = {}) {
   const main = objectValues(v2?.main?.batches).map(normalizeBatch);
   const reward = objectValues(v2?.rewardRounds).flatMap(round =>
@@ -309,7 +321,7 @@ export async function setReady(eid, opts = {}) {
 }
 
 export async function previewSpin(eid, opts = {}) {
-  const ctx = Array.isArray(opts.context?.people) ? opts.context : await loadV2Context(eid);
+  const ctx = await loadDrawContext(eid, opts.context);
   const mode = opts.mode === 'extra' ? 'extra' : 'main';
   const roundName = mode === 'extra' ? (opts.roundName || 'Extra Round') : '';
   const roundId = mode === 'extra' ? roundIdFor(roundName) : 'main';
@@ -322,6 +334,7 @@ export async function previewSpin(eid, opts = {}) {
   const previous = opts.previousBatchId
     ? activeBatches(ctx.v2).find(b => b.id === opts.previousBatchId)
     : null;
+  if (opts.previousBatchId && !previous) throw new Error('The V2 batch is no longer active. Refresh before redrawing.');
   const left = (previous && opts.redraw === true) ? batchSize : Number(giftStats?.remaining || 0);
   if (!prize.id) throw new Error('No prize is selected.');
   if (left <= 0) throw new Error('This V2 prize quota is already full.');
@@ -331,7 +344,8 @@ export async function previewSpin(eid, opts = {}) {
     prizes: ctx.prizes,
     v2: ctx.v2,
     mode,
-    ignoreBatchId: previous?.id || ''
+    ignoreBatchId: previous?.id || '',
+    excludeKeyIds: new Set((previous?.winners || []).map(winnerKeyId))
   });
   if (!pool.length) throw new Error('No eligible checked-in participants for this V2 draw.');
   const candidates = candidateNames(pool);
@@ -394,30 +408,25 @@ export async function drawV2(eid, opts = {}) {
   const roundName = mode === 'extra' ? (opts.roundName || 'Extra Round') : '';
   const roundId = mode === 'extra' ? roundIdFor(roundName) : 'main';
   const batchSize = Math.max(1, Math.min(10, Number(opts.batchSize || 1)));
-  const cachedCtx = Array.isArray(opts.context?.people) && Array.isArray(opts.context?.prizes)
-    ? opts.context
-    : null;
-  const ctx = cachedCtx
-    ? {
-      ...cachedCtx,
-      v2: (await withFirebaseTimeout(FB.get(v2Root(eid)), `Lucky V2 state read ${v2Root(eid)}`)) || cachedCtx.v2 || {}
-    }
-    : await loadV2Context(eid, { requirePeople: true });
+  const ctx = await loadDrawContext(eid, opts.context);
   const prize = ctx.prizes.find(p => p.id === opts.prizeId) || ctx.prizes.find(p => p.id === ctx.curPrizeId) || ctx.prizes[0];
   if (!prize) throw new Error('No prize is selected.');
 
   const previous = opts.previousBatchId
     ? activeBatches(ctx.v2).find(b => b.id === opts.previousBatchId)
     : null;
+  if (opts.previousBatchId && !previous) throw new Error('The V2 batch is no longer active. Refresh before redrawing.');
   const previousWinners = Array.isArray(previous?.winners) ? previous.winners : [];
   const replaceIndex = Number.isInteger(opts.replaceIndex) ? opts.replaceIndex : -1;
   const isReroll = previous && replaceIndex >= 0;
   const isRedraw = previous && opts.redraw === true;
+  if (isReroll && !previousWinners[replaceIndex]) throw new Error('The selected winner slot no longer exists.');
+  const removedWinners = isReroll ? [previousWinners[replaceIndex]] : (isRedraw ? previousWinners : []);
 
   const excludeKeyIds = new Set();
-  if (isReroll) {
+  if (isReroll || isRedraw) {
     previousWinners.forEach(w => {
-      if (w?.keyId) excludeKeyIds.add(w.keyId);
+      excludeKeyIds.add(winnerKeyId(w));
     });
   }
 
@@ -524,7 +533,16 @@ export async function drawV2(eid, opts = {}) {
     time: now
   };
   patch['ui/lastBatchId'] = drawId;
-  await withFirebaseTimeout(FB.patch(v2Root(eid), patch), `draw result write ${v2Root(eid)}`);
+  // Save the replacement and attendance together so removed winners cannot
+  // return to any checked-in draw pool until they are checked in again.
+  const eventPatch = Object.fromEntries(Object.entries(patch).map(([path, value]) => [`ui/luckyV2/${path}`, value]));
+  const removedKeys = new Set(removedWinners.map(participantKey));
+  const people = ctx.people.map((person, index) => {
+    if (!person || !removedKeys.has(participantKey(person))) return person;
+    eventPatch[`people/${index}/checkedIn`] = false;
+    return { ...person, checkedIn: false };
+  });
+  await withFirebaseTimeout(FB.patch(`/events/${eid}`, eventPatch), `draw result and attendance write /events/${eid}`);
 
   const replacedCount = previous?.id ? previousWinners.length : 0;
   const v2UsedAfter = Math.max(0, giftStatsBefore.v2Used - replacedCount + winners.length);
@@ -557,7 +575,7 @@ export async function drawV2(eid, opts = {}) {
     message: 'Revealed'
   });
 
-  return { entry, left: giftStatsAfter.remaining, stageState, v2Patch: patch };
+  return { entry, left: giftStatsAfter.remaining, stageState, v2Patch: patch, people };
 }
 
 export async function undoLastV2(eid) {
