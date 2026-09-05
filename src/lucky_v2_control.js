@@ -16,7 +16,7 @@ import {
   prizeAvailability,
   roundIdFor,
   v2Root
-} from './lucky_v2_core.js?v=20260905a';
+} from './lucky_v2_core.js?v=20260905b';
 import { applyV2Assets, renderV2Stage } from './lucky_v2_stage.js?v=20260714a';
 
 const eid = initEventFromUrl();
@@ -414,11 +414,11 @@ function bindControls() {
   }));
   $('v2Draw')?.addEventListener('click', () => runAction('Start draw', async () => {
     const spinStartedAt = Date.now();
-    await Promise.all([
+    const [preview] = await Promise.all([
       previewSpin(eid, { ...modeOptions(), context: lastSummary }),
       showLuckyDrawScene('Lucky Draw drawing')
     ]);
-    return drawV2(eid, { ...modeOptions(), context: lastSummary, revealDelay: 1540, skipSpinPublish: true, spinStartedAt });
+    return drawV2(eid, { ...modeOptions(), context: lastSummary, drawContext: preview.drawContext, revealDelay: 1540, skipSpinPublish: true, spinStartedAt });
   }));
   $('v2Instant')?.addEventListener('click', () => runAction('Instant draw', async () => {
     const result = await drawV2(eid, { ...modeOptions(), context: lastSummary, instant: true, skipSpinPublish: true });
@@ -429,11 +429,11 @@ function bindControls() {
     const id = selectedBatchId();
     if (!id) throw new Error('No revealed V2 batch to redraw.');
     const spinStartedAt = Date.now();
-    await Promise.all([
+    const [preview] = await Promise.all([
       previewSpin(eid, { ...modeOptions(), context: lastSummary, previousBatchId: id, redraw: true }),
       showLuckyDrawScene('Lucky Draw redraw')
     ]);
-    return drawV2(eid, { ...modeOptions(), context: lastSummary, previousBatchId: id, redraw: true, revealDelay: 1200, skipSpinPublish: true, spinStartedAt });
+    return drawV2(eid, { ...modeOptions(), context: lastSummary, drawContext: preview.drawContext, previousBatchId: id, redraw: true, revealDelay: 1200, skipSpinPublish: true, spinStartedAt });
   }));
   $('v2Reroll')?.addEventListener('click', () => runAction('Reroll selected', async () => {
     const id = selectedBatchId();

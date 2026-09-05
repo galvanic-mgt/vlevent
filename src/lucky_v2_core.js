@@ -367,7 +367,7 @@ export async function previewSpin(eid, opts = {}) {
     candidateNames: candidates,
     message: 'Drawing...'
   });
-  return { stageState };
+  return { stageState, drawContext: ctx };
 }
 
 function buildPool({ people, prizes, v2, mode, ignoreBatchId = '', excludeKeyIds = new Set() }) {
@@ -408,7 +408,7 @@ export async function drawV2(eid, opts = {}) {
   const roundName = mode === 'extra' ? (opts.roundName || 'Extra Round') : '';
   const roundId = mode === 'extra' ? roundIdFor(roundName) : 'main';
   const batchSize = Math.max(1, Math.min(10, Number(opts.batchSize || 1)));
-  const ctx = await loadDrawContext(eid, opts.context);
+  const ctx = opts.drawContext || await loadDrawContext(eid, opts.context);
   const prize = ctx.prizes.find(p => p.id === opts.prizeId) || ctx.prizes.find(p => p.id === ctx.curPrizeId) || ctx.prizes[0];
   if (!prize) throw new Error('No prize is selected.');
 

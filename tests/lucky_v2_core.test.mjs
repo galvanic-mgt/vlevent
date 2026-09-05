@@ -11,6 +11,7 @@ const person = (name, checkedIn = true) => ({ name, code: name, checkedIn });
 async function harness({ mode = 'main', people = [person('A'), person('B'), person('C')] } = {}) {
   let database = { events: { test: { people: clone(people), ui: { luckyV2: {} } } } };
   const writes = [];
+  const reads = [];
   const failures = { roster: false, patch: false };
   const read = path => {
     const value = path.split('/').filter(Boolean).reduce((node, key) => node?.[key], database);
@@ -25,6 +26,7 @@ async function harness({ mode = 'main', people = [person('A'), person('B'), pers
   };
   const FB = {
     get: async path => {
+      reads.push(path);
       if (failures.roster && path.endsWith('/people')) throw new Error('Roster unavailable');
       return read(path);
     },
@@ -80,7 +82,7 @@ async function harness({ mode = 'main', people = [person('A'), person('B'), pers
   const context = { people: clone(people), prizes, curPrizeId: 'gift', v2: read('/events/test/ui/luckyV2') };
   const options = { mode, prizeId: 'gift', context, instant: true };
   return {
-    api, FB, writes, failures, context, options, read,
+    api, FB, writes, reads, failures, context, options, read,
     set: (path, value) => assign(database, `/events/test/${path}`, value),
     draw: extra => api.drawV2('test', { ...options, ...extra })
   };
@@ -109,7 +111,9 @@ for (const mode of ['main', 'extra']) {
     const preview = await h.api.previewSpin('test', { ...h.options, previousBatchId: 'previous', redraw: true, batchSize: 2 });
     assert.deepEqual(clone(preview.stageState.candidateNames.map(p => p.name)).sort(), ['C', 'D']);
     assert.equal(h.read('/events/test/people/0/checkedIn'), true, 'preview does not change attendance');
-    const result = await h.draw({ previousBatchId: 'previous', redraw: true, batchSize: 2 });
+    const result = await h.draw({ previousBatchId: 'previous', redraw: true, batchSize: 2, drawContext: preview.drawContext });
+    assert.equal(h.reads.filter(path => path.endsWith('/people')).length, 1);
+    assert.equal(h.reads.filter(path => path.endsWith('/luckyV2')).length, 1);
     assert.deepEqual(clone(result.entry.winners.map(w => w.name)).sort(), ['C', 'D']);
     assert.deepEqual(h.read('/events/test/people').map(p => p.checkedIn), [false, false, true, true]);
     await assert.rejects(h.draw(), /No eligible checked-in participants/);
@@ -165,4 +169,29 @@ test('stale batches and invalid winner slots cannot trigger replacement', async 
   await assert.rejects(h.draw({ previousBatchId: 'missing', replaceIndex: 0 }), /no longer active/);
   await assert.rejects(h.draw({ previousBatchId: 'previous', replaceIndex: 9 }), /slot no longer exists/);
   assert.equal(h.writes.length, 0);
+});
+
+test('normal preview and draw share one fresh read, then the next action refreshes again', async () => {
+  const h = await harness({ people: [person('A'), person('B'), person('C'), person('D', false)] });
+  h.set('people/2/checkedIn', false);
+  h.set('people/3/checkedIn', true);
+  const preview = await h.api.previewSpin('test', h.options);
+  const result = await h.draw({ drawContext: preview.drawContext });
+  assert.deepEqual(clone(result.entry.winners.map(w => w.name)), ['D']);
+  assert.equal(h.reads.filter(path => path.endsWith('/people')).length, 1);
+  assert.equal(h.reads.filter(path => path.endsWith('/luckyV2')).length, 1);
+
+  h.set('people/2/checkedIn', true);
+  const nextPreview = await h.api.previewSpin('test', h.options);
+  const nextResult = await h.draw({ drawContext: nextPreview.drawContext });
+  assert.deepEqual(clone(nextResult.entry.winners.map(w => w.name)), ['C']);
+  assert.equal(h.reads.filter(path => path.endsWith('/people')).length, 2);
+  assert.equal(h.reads.filter(path => path.endsWith('/luckyV2')).length, 2);
+});
+
+test('draws without a preview still refresh attendance once', async () => {
+  const h = await harness();
+  await h.draw({ previousBatchId: 'previous', replaceIndex: 0 });
+  assert.equal(h.reads.filter(path => path.endsWith('/people')).length, 1);
+  assert.equal(h.reads.filter(path => path.endsWith('/luckyV2')).length, 1);
 });
